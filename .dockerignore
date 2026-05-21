@@ -1,0 +1,9 @@
+.git
+__pycache__
+*.pyc
+.env
+Dockerfile
+tmp/
+data/
+# Không đóng gói model vào image (mount volume); tránh build >1GB và hết disk
+main/xiaozhi-server/models/
