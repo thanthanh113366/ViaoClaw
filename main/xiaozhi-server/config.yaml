@@ -35,12 +35,22 @@ server:
     # Nếu đó là thiết bị nằm trong danh sách trắng, mã thông báo sẽ không được xác minh và thiết bị sẽ được phát hành trực tiếp.
     allowed_devices:
       - "11:22:33:44:55:66"
- # Cấu hình cổng MQTT, dùng để phân phối tới thiết bị qua OTA, được định cấu hình theo tệp .env của mqtt_gateway, ở định dạng Host:port
+ # Cấu hình cổng MQTT full gateway (MQTT+UDP chat), khác mqtt_wake hybrid
   mqtt_gateway: null
-  # Key ký MQTT, dùng để tạo mật khẩu kết nối MQTT, được cấu hình theo file .env của mqtt_gateway
+  # Key ký MQTT cho OTA device credential (mqtt_wake hoặc mqtt_gateway)
   mqtt_signature_key: null
-  # Cấu hình cổng UDP
+  # Cấu hình cổng UDP (chỉ dùng với mqtt_gateway full mode)
   udp_gateway: null
+  # Hybrid: MQTT chỉ wake ESP, chat vẫn qua WebSocket (ngang hàng wakeword)
+  mqtt_wake:
+    enabled: false
+    broker: "127.0.0.1:1883"
+    username: null
+    password: null
+    topic_template: "xiaozhi/wake/{device_id}"
+    publish_topic_template: "xiaozhi/device-server/{device_id}"
+    qos: 1
+    connect_timeout_seconds: 5
 log:
   # Đặt định dạng nhật ký đầu ra của bảng điều khiển, thời gian, cấp độ nhật ký, nhãn, thông báo
   log_format: "<green>{time:YYMMDD HH:mm:ss}</green>[{version}_{selected_module}][<light-blue>{extra[tag]}</light-blue>]-<level>{level}</level>-<light-green>{message}</light-green>"
@@ -130,14 +140,7 @@ context_providers:
 
 # Cấu hình cơ bản của plug-in
 plugins:
-  # Nhận cấu hình của plug-in thời tiết, điền api_key của bạn vào đây
-  # Khóa này là khóa được chia sẻ bởi dự án. Nếu sử dụng quá nhiều, nó có thể bị hạn chế.
-  # Nếu muốn ổn định hơn có thể tự mình xin thay thế. Có 1.000 cuộc gọi miễn phí mỗi ngày.
-  # Địa chỉ ứng dụng: https://console.qweather.com/#/apps/create-key/over
-  # Sau khi đăng ký, bạn có thể tìm thấy apihost của mình thông qua liên kết này: https://console.qweather.com/setting?lang=zh
-  get_weather:
-    api_host: "mj7p3y7naa.re.qweatherapi.com"
-    api_key: "a861d0d5e7bf4ee1a83d9a9e4f96d4da"
+  location:
     default_location: "Đồng Nai"
   # Nhận cấu hình của plug-in tin tức. Tại đây, truyền vào link url tương ứng theo loại tin được yêu cầu. Mặc định hỗ trợ tin tức xã hội, công nghệ và tài chính.
   # Để biết thêm các loại danh sách tin tức, hãy xem https://www.chinanews.com.cn/rss/
@@ -253,7 +256,6 @@ Intent:
     # Hệ thống đã ghi lại các plug-in "handle_exit_intent (nhận dạng thoát)" và "play_music (phát lại nhạc)" theo mặc định. Vui lòng không tải chúng nhiều lần.
     # Sau đây là ví dụ về tải các plug-in để kiểm tra thời tiết, chuyển đổi vai trò cũng như tải và kiểm tra tin tức.
     functions:
-      - get_weather
       - get_news_from_newsnow
       - play_music
   function_call:
@@ -264,7 +266,6 @@ Intent:
     # Sau đây là ví dụ về tải các plug-in để kiểm tra thời tiết, chuyển đổi vai trò cũng như tải và kiểm tra tin tức.
     functions:
       - change_role
-      - get_weather
       # - search_from_ragflow
       # - get_news_from_chinanews
       - get_news_from_newsnow

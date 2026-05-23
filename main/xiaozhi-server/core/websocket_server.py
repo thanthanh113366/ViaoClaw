@@ -69,6 +69,10 @@ class WebSocketServer:
         self.auth = AuthManager(secret_key=secret_key, expire_seconds=expire_seconds)
 
     async def start(self):
+        from core.cron.service import ensure_cron_started
+
+        ensure_cron_started(self.config)
+
         server_config = self.config["server"]
         host = server_config.get("ip", "0.0.0.0")
         port = int(server_config.get("port", 8000))

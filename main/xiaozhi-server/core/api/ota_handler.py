@@ -231,11 +231,40 @@ class OTAHandler(BaseHandler):
                 },
             }
 
-            # existing mqtt/websocket logic (unchanged)
+            # WebSocket + optional MQTT (hybrid wake_only or legacy full gateway)
+            token = ""
+            if self.auth_enable:
+                if self.allowed_devices:
+                    if device_id not in self.allowed_devices:
+                        token = self.auth.generate_token(client_id, device_id)
+                else:
+                    token = self.auth.generate_token(client_id, device_id)
+
+            return_json["websocket"] = {
+                "url": self._get_websocket_url(local_ip, websocket_port),
+                "token": token,
+            }
+            self.logger.bind(tag=TAG).info(
+                f"为设备 {device_id} 下发WebSocket配置"
+            )
+
+            mqtt_wake_cfg = server_config.get("mqtt_wake") or {}
             mqtt_gateway_endpoint = server_config.get("mqtt_gateway")
 
-            if mqtt_gateway_endpoint:  # 如果配置了非空字符串
-                # 尝试从请求数据中获取设备型号（已解析 above）
+            if mqtt_wake_cfg.get("enabled"):
+                from core.cron.mqtt_wake import build_wake_only_mqtt_config
+
+                return_json["mqtt"] = build_wake_only_mqtt_config(
+                    device_id=device_id,
+                    client_id=client_id,
+                    device_model=device_model,
+                    server_config=server_config,
+                    generate_password_signature=self.generate_password_signature,
+                )
+                self.logger.bind(tag=TAG).info(
+                    f"为设备 {device_id} 下发MQTT wake_only配置"
+                )
+            elif mqtt_gateway_endpoint:
                 try:
                     group_id = f"GID_{device_model}".replace(":", "_").replace(" ", "_")
                 except Exception as e:
@@ -245,7 +274,6 @@ class OTAHandler(BaseHandler):
                 mac_address_safe = device_id.replace(":", "_")
                 mqtt_client_id = f"{group_id}@@@{mac_address_safe}@@@{mac_address_safe}"
 
-                # 构建用户数据
                 user_data = {"ip": "unknown"}
                 try:
                     user_data_json = json.dumps(user_data)
@@ -256,7 +284,6 @@ class OTAHandler(BaseHandler):
                     self.logger.bind(tag=TAG).error(f"生成用户名失败: {e}")
                     username = ""
 
-                # 生成密码
                 password = ""
                 signature_key = server_config.get("mqtt_signature_key", "")
                 if signature_key:
@@ -264,11 +291,10 @@ class OTAHandler(BaseHandler):
                         mqtt_client_id + "|" + username, signature_key
                     )
                     if not password:
-                        password = ""  # 签名失败则留空，由设备决定是否允许无密码
+                        password = ""
                 else:
                     self.logger.bind(tag=TAG).warning("缺少MQTT签名密钥，密码留空")
 
-                # 构建MQTT配置（直接使用 mqtt_gateway 字符串）
                 return_json["mqtt"] = {
                     "endpoint": mqtt_gateway_endpoint,
                     "client_id": mqtt_client_id,
@@ -278,24 +304,6 @@ class OTAHandler(BaseHandler):
                     "subscribe_topic": f"devices/p2p/{mac_address_safe}",
                 }
                 self.logger.bind(tag=TAG).info(f"为设备 {device_id} 下发MQTT网关配置")
-
-            else:  # 未配置 mqtt_gateway，下发 WebSocket
-                # 如果开启了认证，则进行认证校验
-                token = ""
-                if self.auth_enable:
-                    if self.allowed_devices:
-                        if device_id not in self.allowed_devices:
-                            token = self.auth.generate_token(client_id, device_id)
-                    else:
-                        token = self.auth.generate_token(client_id, device_id)
-                # NOTE: use websocket_port here
-                return_json["websocket"] = {
-                    "url": self._get_websocket_url(local_ip, websocket_port),
-                    "token": token,
-                }
-                self.logger.bind(tag=TAG).info(
-                    f"未配置MQTT网关，为设备 {device_id} 下发WebSocket配置"
-                )
 
             # Now check firmware files for updates
             try:

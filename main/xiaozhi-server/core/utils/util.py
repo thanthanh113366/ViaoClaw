@@ -17,6 +17,20 @@ from typing import Callable, Any
 TAG = __name__
 
 
+def default_location_from_config() -> str:
+    try:
+        from config.config_loader import load_config
+
+        return (
+            load_config()
+            .get("plugins", {})
+            .get("location", {})
+            .get("default_location", "Đồng Nai")
+        )
+    except Exception:
+        return "Đồng Nai"
+
+
 def get_local_ip():
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -83,19 +97,33 @@ def get_ip_info(ip_addr, logger):
         if cached_ip_info is not None:
             return cached_ip_info
 
-        # 缓存未命中，调用API
-        if is_private_ip(ip_addr):
-            ip_addr = ""
-        url = f"https://whois.pconline.com.cn/ipJson.jsp?json=true&ip={ip_addr}"
-        resp = requests.get(url).json()
-        ip_info = {"city": resp.get("city")}
+        default_city = default_location_from_config()
 
-        # 存入缓存
+        # LAN/private IP (ESP32 qua Docker): dùng default_location, không gọi API TQ
+        if is_private_ip(ip_addr):
+            ip_info = {"city": default_city}
+            cache_manager.set(CacheType.IP_INFO, ip_addr, ip_info)
+            return ip_info
+
+        # Public IP: ip-api.com (hỗ trợ tiếng Việt)
+        url = (
+            f"http://ip-api.com/json/{ip_addr}"
+            f"?lang=vi&fields=status,message,city,country"
+        )
+        resp = requests.get(url, timeout=5).json()
+        if resp.get("status") != "success":
+            logger.bind(tag=TAG).warning(
+                f"ip geo lookup failed for {ip_addr}: {resp.get('message', 'unknown')}"
+            )
+            ip_info = {"city": default_city}
+        else:
+            ip_info = {"city": resp.get("city") or default_city}
+
         cache_manager.set(CacheType.IP_INFO, ip_addr, ip_info)
         return ip_info
     except Exception as e:
         logger.bind(tag=TAG).error(f"Error getting client ip info: {e}")
-        return {}
+        return {"city": default_location_from_config()}
 
 
 def write_json_file(file_path, data):

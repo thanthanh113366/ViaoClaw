@@ -5,6 +5,7 @@ services:
   xiaozhi-esp32-server:
     image: ghcr.nju.edu.cn/xinnan-tech/xiaozhi-esp32-server:server_latest
     container_name: xiaozhi-esp32-server
+    command: sh -c "pip3 install -q apscheduler==3.10.4 paho-mqtt==2.1.0 && exec python app.py"
     restart: always
     security_opt:
       - seccomp:unconfined
@@ -19,9 +20,10 @@ services:
       # 配置文件目录
       - ./data:/opt/xiaozhi-esp32-server/data
       # 插件与核心热修复
-      - ./plugins_func:/opt/xiaozhi-esp32-server/plugins_func
       # - ./core/connection.py:/opt/xiaozhi-esp32-server/core/connection.py
       # 模型文件挂接，很重要
       # - ./models/SenseVoiceSmall/model.pt:/opt/xiaozhi-esp32-server/models/SenseVoiceSmall/model.pt
       - ./models/snakers4_silero-vad:/opt/xiaozhi-esp32-server/models/snakers4_silero-vad
+      - ./plugins_func:/opt/xiaozhi-esp32-server/plugins_func
       - ./core:/opt/xiaozhi-esp32-server/core
+      - ./app.py:/opt/xiaozhi-esp32-server/app.py

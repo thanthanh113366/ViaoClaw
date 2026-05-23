@@ -68,6 +68,12 @@ async def main():
     
     config["server"]["auth_key"] = auth_key
 
+    cron_svc = None
+    if (config.get("cron") or {}).get("enabled", False):
+        from core.cron.service import ensure_cron_started
+
+        cron_svc = ensure_cron_started(config)
+
     # 添加 stdin 监控任务
     stdin_task = asyncio.create_task(monitor_stdin())
 
@@ -134,6 +140,9 @@ async def main():
     except asyncio.CancelledError:
         print("任务被取消，清理资源中...")
     finally:
+        if cron_svc is not None:
+            cron_svc.stop()
+
         # 停止全局GC管理器
         await gc_manager.stop()
 

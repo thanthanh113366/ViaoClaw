@@ -161,30 +161,6 @@ class PromptManager:
             self.logger.bind(tag=TAG).error(f"获取位置信息失败: {e}")
             return "未知位置"
 
-    def _get_weather_info(self, conn: "ConnectionHandler", location: str) -> str:
-        """获取天气信息"""
-        try:
-            # 先从缓存获取
-            cached_weather = self.cache_manager.get(self.CacheType.WEATHER, location)
-            if cached_weather is not None:
-                return cached_weather
-
-            # 缓存未命中，调用get_weather函数获取
-            from plugins_func.functions.get_weather import get_weather
-            from plugins_func.register import ActionResponse
-
-            # 调用get_weather函数
-            result = get_weather(conn, location=location, lang="zh_CN")
-            if isinstance(result, ActionResponse):
-                weather_report = result.result
-                self.cache_manager.set(self.CacheType.WEATHER, location, weather_report)
-                return weather_report
-            return "天气信息获取失败"
-
-        except Exception as e:
-            self.logger.bind(tag=TAG).error(f"获取天气信息失败: {e}")
-            return "天气信息获取失败"
-
     def update_context_info(self, conn, client_ip: str):
         """同步更新上下文信息"""
         try:
@@ -192,21 +168,10 @@ class PromptManager:
             if (
                 client_ip
                 and self.base_prompt_template
-                and (
-                    "local_address" in self.base_prompt_template
-                    or "weather_info" in self.base_prompt_template
-                )
+                and "local_address" in self.base_prompt_template
             ):
                 # 获取位置信息（使用全局缓存）
                 local_address = self._get_location_info(client_ip)
-
-            if (
-                self.base_prompt_template
-                and "weather_info" in self.base_prompt_template
-                and local_address
-            ):
-                # 获取天气信息（使用全局缓存）
-                self._get_weather_info(conn, local_address)
 
             # 获取配置的上下文数据
             if hasattr(conn, "device_id") and conn.device_id:
@@ -236,20 +201,12 @@ class PromptManager:
 
             # 获取缓存的上下文信息
             local_address = ""
-            weather_info = ""
 
             if client_ip:
                 # 获取位置信息（从全局缓存）
                 local_address = (
                     self.cache_manager.get(self.CacheType.LOCATION, client_ip) or ""
                 )
-
-                # 获取天气信息（从全局缓存）
-                if local_address:
-                    weather_info = (
-                        self.cache_manager.get(self.CacheType.WEATHER, local_address)
-                        or ""
-                    )
 
             # 获取TTS选择的语言，默认值为中文
             language = (
@@ -269,7 +226,6 @@ class PromptManager:
                 today_weekday=today_weekday,
                 lunar_date=lunar_date,
                 local_address=local_address,
-                weather_info=weather_info,
                 emojiList=EMOJI_List,
                 device_id=device_id,
                 client_ip=client_ip,

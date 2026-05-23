@@ -491,6 +491,7 @@ class ConnectionHandler:
                 self.config.get("selected_module", {})
             )
             self.logger = create_connection_logger(self.selected_module_str)
+            self._register_cron_connection()
 
             """初始化组件"""
             if self.config.get("prompt") is not None:
@@ -528,6 +529,30 @@ class ConnectionHandler:
 
         except Exception as e:
             self.logger.bind(tag=TAG).error(f"实例化组件失败: {e}")
+
+    def _register_cron_connection(self) -> None:
+        from core.cron.registry import get_connection_registry
+
+        registry = get_connection_registry()
+        self.logger.bind(tag=TAG).info(
+            f"[cron] register attempt device_id={self.device_id!r} "
+            f"need_bind={self.need_bind} registry_ok={registry is not None}"
+        )
+        if not self.device_id:
+            self.logger.bind(tag=TAG).warning(
+                "[cron] register skipped: device_id is empty"
+            )
+        elif self.need_bind:
+            self.logger.bind(tag=TAG).warning(
+                "[cron] register skipped: need_bind=True"
+            )
+        elif registry is None:
+            self.logger.bind(tag=TAG).warning(
+                "[cron] register skipped: ConnectionRegistry not initialized "
+                "(cron.enabled=false or CronService not started?)"
+            )
+        else:
+            registry.register(self.device_id, self)
 
     def _init_prompt_enhancement(self):
 
@@ -1386,6 +1411,13 @@ class ConnectionHandler:
     async def close(self, ws=None):
         """资源清理方法"""
         try:
+            if self.device_id:
+                from core.cron.registry import get_connection_registry
+
+                registry = get_connection_registry()
+                if registry is not None:
+                    registry.unregister(self.device_id, self)
+
             # 清理 VAD 连接资源
             if (
                     hasattr(self, "vad")
