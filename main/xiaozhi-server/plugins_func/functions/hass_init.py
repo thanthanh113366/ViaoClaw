@@ -33,7 +33,7 @@ def build_home_assistant_devices_prompt(plugins_config, config_source: str) -> s
 
 
 def append_devices_to_prompt(conn):
-    if conn.intent_type != "function_call":
+    if getattr(conn, "intent_type", None) != "function_call":
         return
 
     funcs = conn.config["Intent"][conn.config["selected_module"]["Intent"]].get(
@@ -56,7 +56,9 @@ def append_devices_to_prompt(conn):
         return
 
     conn.prompt = (conn.prompt or "") + device_prompt
-    conn.dialogue.update_system_message(conn.prompt)
+    dialogue = getattr(conn, "dialogue", None)
+    if dialogue is not None:
+        dialogue.update_system_message(conn.prompt)
     logger.bind(tag=TAG).info("Home Assistant device list appended to system prompt")
 
 

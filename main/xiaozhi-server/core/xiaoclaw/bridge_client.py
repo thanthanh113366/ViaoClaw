@@ -16,7 +16,9 @@ def _xiaoclaw_config(config: dict[str, Any]) -> dict[str, Any]:
 
 
 def is_enabled(config: dict[str, Any]) -> bool:
-    return bool(_xiaoclaw_config(config).get("enabled"))
+    from core.agent.service import is_bridge_enabled
+
+    return is_bridge_enabled(config)
 
 
 async def request_reply(

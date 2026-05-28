@@ -70,8 +70,12 @@ class WebSocketServer:
 
     async def start(self):
         from core.cron.service import ensure_cron_started
+        from core.agent.service import ensure_agent_started, is_agent_enabled
 
         ensure_cron_started(self.config)
+        runtime = ensure_agent_started(self.config)
+        if runtime is not None and is_agent_enabled(self.config):
+            await runtime.start()
 
         server_config = self.config["server"]
         host = server_config.get("ip", "0.0.0.0")

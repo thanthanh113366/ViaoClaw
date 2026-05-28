@@ -13,7 +13,6 @@ import subprocess
 import websockets
 
 from core.utils.util import (
-    extract_json_from_string,
     check_vad_update,
     check_asr_update,
     filter_sensitive_info,
@@ -25,7 +24,7 @@ from core.utils.modules_initialize import (
     initialize_tts,
     initialize_asr,
 )
-from core.handle.reportHandle import report, enqueue_tool_report
+from core.handle.reportHandle import report
 from core.providers.tts.default import DefaultTTS
 from concurrent.futures import ThreadPoolExecutor
 from core.utils.dialogue import Message, Dialogue
@@ -33,7 +32,6 @@ from core.providers.asr.dto.dto import InterfaceType
 from core.handle.textHandle import handleTextMessage
 from core.providers.tools.unified_tool_handler import UnifiedToolHandler
 from plugins_func.loadplugins import auto_import_modules
-from plugins_func.register import Action, ActionResponse
 from core.auth import AuthenticationError
 from config.config_loader import get_private_config_from_api
 from core.providers.tts.dto.dto import ContentType, TTSMessageDTO, SentenceType
@@ -41,8 +39,6 @@ from config.logger import setup_logging, build_module_string, create_connection_
 from config.manage_api_client import DeviceNotFoundException, DeviceBindException, generate_and_save_chat_title
 from core.utils.prompt_manager import PromptManager
 from core.utils.voiceprint_provider import VoiceprintProvider
-from core.utils.util import get_system_error_response
-from core.utils import textUtils
 
 
 TAG = __name__
@@ -52,26 +48,6 @@ auto_import_modules("plugins_func.functions")
 
 class TTSException(RuntimeError):
     pass
-
-# direct_answer 虚拟工具定义
-# 不是真实工具，是路由机制：将"调不调工具"的二选一变为"调哪个"的多选，防止小模型误触发真实工具
-DIRECT_ANSWER_TOOL = {
-    "type": "function",
-    "function": {
-        "name": "direct_answer",
-        "description": "当用户的请求不匹配其他任何工具时，可用此选项直接回复。将回复内容写在response参数里。",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "response": {
-                    "type": "string",
-                    "description": "你回复用户的完整内容",
-                },
-            },
-            "required": ["response"],
-        },
-    },
-}
 
 
 class ConnectionHandler:
@@ -286,16 +262,22 @@ class ConnectionHandler:
 
             # 守护线程2：走老流程记忆保存（仅记忆，不含标题）
             if self.memory:
-                # 使用线程池异步保存记忆
+                memory_id = self.session_id
+                session = getattr(self, "_chat_session", None)
+                from core.agent.service import is_agent_enabled
+
+                if is_agent_enabled(self.config) and session is not None:
+                    memory_id = session.session_key
+                    mem = session.memory if session.memory is not None else self.memory
+                else:
+                    mem = self.memory
+
                 def save_memory_task():
                     try:
-                        # 创建新事件循环（避免与主循环冲突）
                         loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(loop)
                         loop.run_until_complete(
-                            self.memory.save_memory(
-                                self.dialogue.dialogue, self.session_id
-                            )
+                            mem.save_memory(self.dialogue.dialogue, memory_id)
                         )
                     except Exception as e:
                         self.logger.bind(tag=TAG).error(f"保存记忆失败: {e}")
@@ -524,8 +506,13 @@ class ConnectionHandler:
             self._init_report_threads()
             """更新系统提示词"""
             self._init_prompt_enhancement()
+            from core.agent.service import is_agent_enabled
+
+            if is_agent_enabled(self.config):
+                self._bind_agent_session()
             """注入工具调用few-shot示例（仅function_call模式）"""
-            self._inject_tool_call_fewshot()
+            if not is_agent_enabled(self.config):
+                self._inject_tool_call_fewshot()
 
         except Exception as e:
             self.logger.bind(tag=TAG).error(f"实例化组件失败: {e}")
@@ -553,6 +540,38 @@ class ConnectionHandler:
             )
         else:
             registry.register(self.device_id, self)
+
+    def _bind_agent_session(self) -> None:
+        from core.agent.service import get_agent_runtime_optional
+        from plugins_func.functions.hass_init import append_devices_to_prompt
+
+        if not self.device_id or self.need_bind:
+            return
+        runtime = get_agent_runtime_optional()
+        if runtime is None:
+            self.logger.bind(tag=TAG).warning(
+                "[xiaoclaw.agent] bind skipped: runtime not started"
+            )
+            return
+
+        append_devices_to_prompt(self)
+
+        session_key = f"xiaozhi:{self.device_id}"
+        self.session_key = session_key
+        session = runtime.session_registry.get_or_create(
+            session_key,
+            channel="xiaozhi",
+            device_id=self.device_id,
+            conn=self,
+        )
+        if self.prompt:
+            session.prompt = self.prompt
+            session.dialogue.update_system_message(self.prompt)
+        self._chat_session = session
+        self.dialogue = session.dialogue
+        self.logger.bind(tag=TAG).info(
+            f"[xiaoclaw.session] bind device_id={self.device_id!r} session_key={session_key}"
+        )
 
     def _init_prompt_enhancement(self):
 
@@ -917,6 +936,11 @@ class ConnectionHandler:
                 self.intent.set_llm(self.llm)
                 self.logger.bind(tag=TAG).info("使用主LLM作为意图识别模型")
 
+        from core.agent.service import is_agent_enabled
+
+        if is_agent_enabled(self.config):
+            return
+
         """加载统一工具处理器"""
         self.func_handler = UnifiedToolHandler(self)
 
@@ -930,445 +954,25 @@ class ConnectionHandler:
         self.dialogue.update_system_message(self.prompt)
 
     def chat(self, query, depth=0):
-        # 保存当前任务的sentence_id到局部变量，避免被新任务覆盖
-        current_sentence_id = None
+        from core.agent.chat_engine import ChatEngine
+        from core.agent.context import build_legacy_turn_context, build_turn_context
+        from core.agent.service import get_agent_runtime_optional, is_agent_enabled
+        from core.handle.agentOutbound import VoiceOutbound
 
-        if query is not None:
-            self.logger.bind(tag=TAG).info(f"大模型收到用户消息: {query}")
-
-        # 为最顶层时新建会话ID和发送FIRST请求
-        if depth == 0:
-            current_sentence_id = str(uuid.uuid4().hex)
-            self.sentence_id = current_sentence_id  # 更新共享属性
-            self.dialogue.put(Message(role="user", content=query))
-            self.tts.tts_text_queue.put(
-                TTSMessageDTO(
-                    sentence_id=current_sentence_id,
-                    sentence_type=SentenceType.FIRST,
-                    content_type=ContentType.ACTION,
-                )
+        engine = ChatEngine()
+        outbound = VoiceOutbound(self)
+        runtime = get_agent_runtime_optional()
+        session = getattr(self, "_chat_session", None)
+        if is_agent_enabled(self.config) and runtime is not None and session is not None:
+            ctx = build_turn_context(
+                session=session,
+                outbound=outbound,
+                runtime=runtime,
+                conn=self,
             )
         else:
-            # 递归调用时，使用当前的sentence_id
-            current_sentence_id = self.sentence_id
-
-        # 设置最大递归深度，避免无限循环，可根据实际需求调整
-        MAX_DEPTH = 5
-        force_final_answer = False  # 标记是否强制最终回答
-
-        if depth >= MAX_DEPTH:
-            self.logger.bind(tag=TAG).debug(
-                f"已达到最大工具调用深度 {MAX_DEPTH}，将强制基于现有信息回答"
-            )
-            force_final_answer = True
-            # 添加系统指令，要求 LLM 基于现有信息回答
-            self.dialogue.put(
-                Message(
-                    role="user",
-                    content="[系统提示] 已达到最大工具调用次数限制，请你基于目前已经获取的所有信息，直接给出最终答案。不要再尝试调用任何工具。",
-                )
-            )
-
-        # Define intent functions
-        functions = None
-        # 达到最大深度时，禁用工具调用，强制 LLM 直接回答
-        if (
-                self.intent_type == "function_call"
-                and hasattr(self, "func_handler")
-                and not force_final_answer
-        ):
-            functions = self.func_handler.get_functions()
-            # 仅在第一层调用时注入 direct_answer 虚拟工具
-            # 递归调用（depth>0）不注入，避免模型在生成文本回复时再次调 direct_answer 导致循环
-            if functions is not None and depth == 0:
-                functions.append(DIRECT_ANSWER_TOOL)
-
-        response_message = []
-
-        try:
-            # 使用带记忆的对话
-            memory_str = None
-            # 仅当query非空（代表用户询问）时查询记忆
-            if self.memory is not None and query:
-                future = asyncio.run_coroutine_threadsafe(
-                    self.memory.query_memory(query), self.loop
-                )
-                memory_str = future.result()
-
-            if self.intent_type == "function_call" and functions is not None:
-                # 使用支持functions的streaming接口
-                llm_responses = self.llm.response_with_functions(
-                    self.session_id,
-                    self.dialogue.get_llm_dialogue_with_memory(
-                        memory_str, self.config.get("voiceprint", {})
-                    ),
-                    functions=functions,
-                )
-            else:
-                llm_responses = self.llm.response(
-                    self.session_id,
-                    self.dialogue.get_llm_dialogue_with_memory(
-                        memory_str, self.config.get("voiceprint", {})
-                    ),
-                )
-        except Exception as e:
-            self.logger.bind(tag=TAG).error(f"LLM 处理出错 {query}: {e}")
-            return None
-
-        # 处理流式响应
-        tool_call_flag = False
-        # 支持多个并行工具调用 - 使用列表存储
-        tool_calls_list = []  # 格式: [{"id": "", "name": "", "arguments": ""}]
-        content_arguments = ""
-        emotion_flag = True
-        try:
-            for response in llm_responses:
-                if self.client_abort:
-                    break
-                if self.intent_type == "function_call" and functions is not None:
-                    content, tools_call = response
-                    if "content" in response:
-                        content = response["content"]
-                        tools_call = None
-                    if content is not None and len(content) > 0:
-                        content_arguments += content
-
-                    if not tool_call_flag and content_arguments.startswith("<tool_call>"):
-                        # print("content_arguments", content_arguments)
-                        tool_call_flag = True
-
-                    if tools_call is not None and len(tools_call) > 0:
-                        tool_call_flag = True
-                        self._merge_tool_calls(tool_calls_list, tools_call)
-
-                    # 流式提取 direct_answer 的 response 参数，实时送 TTS
-                    # 使用安全缓冲区，防止 JSON 闭合符号泄漏到 TTS
-                    _DA_STREAM_BUFFER = 5
-                    for tc in tool_calls_list:
-                        if tc["name"] == "direct_answer" and tc.get("arguments"):
-                            da_text = self._extract_direct_answer_response(tc["arguments"])
-                            sent_len = tc.get("_da_sent", 0)
-                            if da_text and len(da_text) > sent_len:
-                                safe_end = max(sent_len, len(da_text) - _DA_STREAM_BUFFER)
-                                if safe_end > sent_len:
-                                    new_part = da_text[sent_len:safe_end]
-                                    # 清理 delta 中可能泄漏的 JSON 闭合垃圾
-                                    new_part = self._clean_response_garbage(new_part)
-                                    if new_part:
-                                        tc["_da_sent"] = safe_end
-                                        self.tts.tts_text_queue.put(
-                                            TTSMessageDTO(
-                                                sentence_id=current_sentence_id,
-                                                sentence_type=SentenceType.MIDDLE,
-                                                content_type=ContentType.TEXT,
-                                                content_detail=new_part,
-                                            )
-                                        )
-                else:
-                    content = response
-
-                # 在llm回复中获取情绪表情，一轮对话只在开头获取一次
-                if emotion_flag and content is not None and content.strip():
-                    asyncio.run_coroutine_threadsafe(
-                        textUtils.get_emotion(self, content),
-                        self.loop,
-                    )
-                    emotion_flag = False
-
-                if content is not None and len(content) > 0:
-                    if not tool_call_flag:
-                        response_message.append(content)
-                        self.tts.tts_text_queue.put(
-                            TTSMessageDTO(
-                                sentence_id=current_sentence_id,
-                                sentence_type=SentenceType.MIDDLE,
-                                content_type=ContentType.TEXT,
-                                content_detail=content,
-                            )
-                        )
-        except Exception as e:
-            self.logger.bind(tag=TAG).error(f"LLM stream processing error: {e}")
-            self.tts.tts_text_queue.put(
-                TTSMessageDTO(
-                    sentence_id=current_sentence_id,
-                    sentence_type=SentenceType.MIDDLE,
-                    content_type=ContentType.TEXT,
-                    content_detail=get_system_error_response(self.config),
-                )
-            )
-            if depth == 0:
-                self.tts.tts_text_queue.put(
-                    TTSMessageDTO(
-                        sentence_id=current_sentence_id,
-                        sentence_type=SentenceType.LAST,
-                        content_type=ContentType.ACTION,
-                    )
-                )
-            return
-        # 处理function call
-        if tool_call_flag:
-            bHasError = False
-            # 处理基于文本的工具调用格式
-            if len(tool_calls_list) == 0 and content_arguments:
-                a = extract_json_from_string(content_arguments)
-                if a is not None:
-                    try:
-                        content_arguments_json = json.loads(a)
-                        tool_calls_list.append(
-                            {
-                                "id": str(uuid.uuid4().hex),
-                                "name": content_arguments_json["name"],
-                                "arguments": json.dumps(
-                                    content_arguments_json["arguments"],
-                                    ensure_ascii=False,
-                                ),
-                            }
-                        )
-                    except Exception as e:
-                        bHasError = True
-                        response_message.append(a)
-                else:
-                    bHasError = True
-                    response_message.append(content_arguments)
-                if bHasError:
-                    self.logger.bind(tag=TAG).error(
-                        f"function call error: {content_arguments}"
-                    )
-
-            if not bHasError and len(tool_calls_list) > 0:
-                # 处理 direct_answer 虚拟工具
-                direct_answer_calls = [tc for tc in tool_calls_list if tc["name"] == "direct_answer"]
-                real_tool_calls = [tc for tc in tool_calls_list if tc["name"] != "direct_answer"]
-
-                if direct_answer_calls:
-                    self.logger.bind(tag=TAG).debug(
-                        f"模型选择 direct_answer，流式已播报，写入对话历史"
-                    )
-                    for tc in direct_answer_calls:
-                        da_response = self._extract_direct_answer_response(tc.get("arguments", "{}"))
-                        if da_response:
-                            # 刷新流式缓冲区中未发送的部分
-                            sent_len = tc.get("_da_sent", 0)
-                            remaining = da_response[sent_len:]
-                            if remaining:
-                                remaining = self._clean_response_garbage(remaining)
-                                if remaining:
-                                    self.tts.tts_text_queue.put(
-                                        TTSMessageDTO(
-                                            sentence_id=current_sentence_id,
-                                            sentence_type=SentenceType.MIDDLE,
-                                            content_type=ContentType.TEXT,
-                                            content_detail=remaining,
-                                        )
-                                    )
-                            # 写入对话历史
-                            da_response = self._clean_response_garbage(da_response)
-                            self.tts.store_tts_text(current_sentence_id, da_response)
-                            self.dialogue.put(Message(role="assistant", content=da_response))
-
-                    if not real_tool_calls:
-                        if depth == 0:
-                            self.tts.tts_text_queue.put(
-                                TTSMessageDTO(
-                                    sentence_id=current_sentence_id,
-                                    sentence_type=SentenceType.LAST,
-                                    content_type=ContentType.ACTION,
-                                )
-                            )
-                        return
-
-                    tool_calls_list = real_tool_calls
-
-            if not bHasError and len(tool_calls_list) > 0:
-                self.logger.bind(tag=TAG).debug(
-                    f"检测到 {len(tool_calls_list)} 个工具调用"
-                )
-
-                # LLM 流式阶段已播报过的文本
-                streamed_text = ""
-                if len(response_message) > 0:
-                    streamed_text = "".join(response_message)
-                    self.tts.store_tts_text(current_sentence_id, streamed_text)
-                    self.dialogue.put(Message(role="assistant", content=streamed_text))
-                response_message.clear()
-
-                # 收集所有工具调用的 Future
-                futures_with_data = []
-                for tool_call_data in tool_calls_list:
-                    self.logger.bind(tag=TAG).debug(
-                        f"function_name={tool_call_data['name']}, function_id={tool_call_data['id']}, function_arguments={tool_call_data['arguments']}"
-                    )
-
-                    # 使用公共方法上报工具调用
-                    tool_input = json.loads(tool_call_data.get("arguments") or "{}")
-                    enqueue_tool_report(self, tool_call_data['name'], tool_input)
-
-                    future = asyncio.run_coroutine_threadsafe(
-                        self.func_handler.handle_llm_function_call(
-                            self, tool_call_data
-                        ),
-                        self.loop,
-                    )
-                    futures_with_data.append((future, tool_call_data, tool_input))
-
-                # 工具调用超时时间，可配置，默认30秒
-                tool_call_timeout = int(self.config.get("tool_call_timeout", 30))
-                # 等待协程结束（实际等待时长为最慢的那个）
-                tool_results = []
-
-                for future, tool_call_data, tool_input in futures_with_data:
-                    try:
-                        result = future.result(timeout=tool_call_timeout)
-                        tool_results.append((result, tool_call_data))
-                        # 使用公共方法上报工具调用结果
-                        enqueue_tool_report(self, tool_call_data['name'], tool_input, str(result.result) if result.result else None, report_tool_call=False)
-
-                    except Exception as e:
-                        self.logger.bind(tag=TAG).error(
-                            f"工具调用超时或异常: {tool_call_data['name']}, 错误: {e}"
-                        )
-                        # 超时时返回错误响应，避免整个流程卡死
-                        tool_results.append((
-                            ActionResponse(action=Action.ERROR, result="哎呀，网络遇到点问题，请稍后再试下！"),
-                            tool_call_data
-                        ))
-                        # 上报工具调用错误
-                        enqueue_tool_report(self, tool_call_data['name'], tool_input, str(e), report_tool_call=False)
-
-                # 统一处理工具调用结果
-                if tool_results:
-                    self._handle_function_result(tool_results, depth=depth, streamed_text=streamed_text)
-
-        # 存储对话内容
-        if len(response_message) > 0:
-            text_buff = "".join(response_message)
-            self.tts.store_tts_text(current_sentence_id, text_buff)
-            self.dialogue.put(Message(role="assistant", content=text_buff))
-
-        if depth == 0:
-            self.tts.tts_text_queue.put(
-                TTSMessageDTO(
-                    sentence_id=current_sentence_id,
-                    sentence_type=SentenceType.LAST,
-                    content_type=ContentType.ACTION,
-                )
-            )
-            # 使用lambda延迟计算，只有在DEBUG级别时才执行get_llm_dialogue()
-            self.logger.bind(tag=TAG).debug(
-                lambda: json.dumps(
-                    self.dialogue.get_llm_dialogue(), indent=4, ensure_ascii=False
-                )
-            )
-
-        return True
-
-    def _handle_function_result(self, tool_results, depth, streamed_text=""):
-        need_llm_tools = []
-        record_tools = []
-
-        for result, tool_call_data in tool_results:
-            if result.action in [
-                Action.RESPONSE,
-                Action.NOTFOUND,
-                Action.ERROR,
-            ]:
-                text = result.response if result.response else result.result
-                if streamed_text and text in streamed_text:
-                    self.logger.bind(tag=TAG).debug(
-                        f"Skipping duplicate TTS for tool {tool_call_data['name']}, already streamed"
-                    )
-                else:
-                    self.tts.tts_one_sentence(self, ContentType.TEXT, content_detail=text)
-                    self.tts.store_tts_text(self.sentence_id, text)
-                self.dialogue.put(Message(role="assistant", content=text))
-            elif result.action == Action.REQLLM:
-                need_llm_tools.append((result, tool_call_data))
-            elif result.action == Action.RECORD:
-                record_tools.append((result, tool_call_data))
-            else:
-                pass
-
-        # Action.RECORD：写入完整工具调用链（assistant(tool_calls) → tool(result) → assistant(response)）
-        # 模型从历史中学到工具调用模式，不额外调用LLM
-        if record_tools:
-            # 构造 assistant 消息（含 tool_calls），记录"模型调用了哪些工具"
-            all_tool_calls = [
-                {
-                    "id": tool_call_data["id"],
-                    "function": {
-                        "arguments": (
-                            "{}"
-                            if tool_call_data["arguments"] == ""
-                            else tool_call_data["arguments"]
-                        ),
-                        "name": tool_call_data["name"],
-                    },
-                    "type": "function",
-                    "index": idx,
-                }
-                for idx, (_, tool_call_data) in enumerate(record_tools)
-            ]
-            self.dialogue.put(Message(role="assistant", tool_calls=all_tool_calls))
-
-            # 写入每条工具的执行结果，记录"工具返回了什么"
-            for result, tool_call_data in record_tools:
-                text = result.result or ""
-                self.dialogue.put(
-                    Message(
-                        role="tool",
-                        tool_call_id=(
-                            str(uuid.uuid4())
-                            if tool_call_data["id"] is None
-                            else tool_call_data["id"]
-                        ),
-                        content=text,
-                    )
-                )
-
-            # 用固定文本作为最终回复，补全标准三段式，保证下一条消息是 user 而非接 tool
-            response_parts = []
-            for result, _ in record_tools:
-                resp = result.response or result.result
-                if resp:
-                    response_parts.append(resp)
-            if response_parts:
-                self.dialogue.put(Message(role="assistant", content="，".join(response_parts)))
-
-        if need_llm_tools:
-            all_tool_calls = [
-                {
-                    "id": tool_call_data["id"],
-                    "function": {
-                        "arguments": (
-                            "{}"
-                            if tool_call_data["arguments"] == ""
-                            else tool_call_data["arguments"]
-                        ),
-                        "name": tool_call_data["name"],
-                    },
-                    "type": "function",
-                    "index": idx,
-                }
-                for idx, (_, tool_call_data) in enumerate(need_llm_tools)
-            ]
-            self.dialogue.put(Message(role="assistant", tool_calls=all_tool_calls))
-
-            for result, tool_call_data in need_llm_tools:
-                text = result.result
-                if text is not None and len(text) > 0:
-                    self.dialogue.put(
-                        Message(
-                            role="tool",
-                            tool_call_id=(
-                                str(uuid.uuid4())
-                                if tool_call_data["id"] is None
-                                else tool_call_data["id"]
-                            ),
-                            content=text,
-                        )
-                    )
-
-            self.chat(None, depth=depth + 1)
+            ctx = build_legacy_turn_context(self, outbound)
+        return engine.chat_sync(query, ctx, depth=depth)
 
     def _report_worker(self):
         """聊天记录上报工作线程"""
@@ -1601,86 +1205,3 @@ class ConnectionHandler:
             self.logger.bind(tag=TAG).error(f"超时检查任务出错: {e}")
         finally:
             self.logger.bind(tag=TAG).info("超时检查任务已退出")
-
-    @staticmethod
-    def _extract_direct_answer_response(arguments_str):
-        """从 direct_answer 的参数中提取 response 值。
-        优先使用 json.loads 标准解析，流式阶段 fallback 到字符串提取。
-        """
-        if not arguments_str:
-            return ""
-        # 优先尝试标准 JSON 解析（适用于完整且格式正确的 JSON）
-        try:
-            data = json.loads(arguments_str)
-            if isinstance(data, dict) and "response" in data:
-                return data["response"]
-        except (json.JSONDecodeError, TypeError):
-            pass
-        # Fallback：流式阶段 JSON 可能不完整，使用字符串提取
-        marker = '"response": "'
-        idx = arguments_str.find(marker)
-        if idx < 0:
-            marker = '"response":"'
-            idx = arguments_str.find(marker)
-        if idx < 0:
-            return ""
-        start = idx + len(marker)
-        raw = arguments_str[start:]
-        # 去掉末尾的 JSON 闭合符号（如果已完整）
-        if raw.endswith('"}'):
-            raw = raw[:-2]
-        elif raw.endswith('"'):
-            raw = raw[:-1]
-        # 处理 JSON 转义
-        raw = raw.replace('\\"', '"').replace('\\n', '\n').replace('\\\\', '\\')
-        return raw
-
-    @staticmethod
-    def _clean_response_garbage(text):
-        """清理 response 中可能泄漏的 JSON 闭合符号。
-        模型有时会在 response 内容中生成 JSON 闭合字符（如 ）"}} 或 '})，
-        这些不是故事内容的一部分，需要去除。
-        """
-        if not text:
-            return text
-        # 清理独立一行的 JSON 闭合垃圾（如 ）"}}  '}}  "}}  }}  } ）
-        _garbage_chars = frozenset('")\'}）')
-        lines = text.split('\n')
-        cleaned = []
-        for line in lines:
-            stripped = line.strip()
-            if stripped and len(stripped) <= 8 and all(c in _garbage_chars for c in stripped):
-                continue
-            cleaned.append(line)
-        result = '\n'.join(cleaned)
-        # 清理末尾残留的 JSON 闭合符号
-        result = re.sub(r'["\'}\]]+$', '', result.rstrip()).rstrip()
-        return result
-
-    def _merge_tool_calls(self, tool_calls_list, tools_call):
-        """合并工具调用列表
-
-        Args:
-            tool_calls_list: 已收集的工具调用列表
-            tools_call: 新的工具调用
-        """
-        for tool_call in tools_call:
-            tool_index = getattr(tool_call, "index", None)
-            if tool_index is None:
-                if tool_call.function.name:
-                    # 有 function_name，说明是新的工具调用
-                    tool_index = len(tool_calls_list)
-                else:
-                    tool_index = len(tool_calls_list) - 1 if tool_calls_list else 0
-
-            # 确保列表有足够的位置
-            if tool_index >= len(tool_calls_list):
-                tool_calls_list.append({"id": "", "name": "", "arguments": ""})
-
-            # 更新工具调用信息
-            if tool_call.id:
-                tool_calls_list[tool_index]["id"] = tool_call.id
-            if tool_call.function.name:
-                tool_calls_list[tool_index]["name"] = tool_call.function.name
-            if tool_call.function.arguments:
-                tool_calls_list[tool_index]["arguments"] += tool_call.function.arguments

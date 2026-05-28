@@ -14,12 +14,17 @@ logger = setup_logging()
 
 async def handleIotDescriptors(conn: "ConnectionHandler", descriptors):
     """处理物联网描述"""
+    from core.agent.service import get_agent_runtime_optional, is_agent_enabled
+
     wait_max_time = 5
-    while (
-        not hasattr(conn, "func_handler")
-        or conn.func_handler is None
-        or not conn.func_handler.finish_init
-    ):
+    while True:
+        if is_agent_enabled(conn.config):
+            runtime = get_agent_runtime_optional()
+            handler = runtime.func_handler if runtime else None
+        else:
+            handler = getattr(conn, "func_handler", None)
+        if handler is not None and handler.finish_init:
+            break
         await asyncio.sleep(1)
         wait_max_time -= 1
         if wait_max_time <= 0:
@@ -58,11 +63,14 @@ async def handleIotDescriptors(conn: "ConnectionHandler", descriptors):
         functions_changed = True
 
     # 如果注册了新函数，更新function描述列表
-    if functions_changed and hasattr(conn, "func_handler"):
-        # 注册IoT工具到统一工具处理器
-        await conn.func_handler.register_iot_tools(descriptors)
+    if functions_changed:
+        from core.agent.service import is_agent_enabled
 
-        conn.func_handler.current_support_functions()
+        if is_agent_enabled(conn.config):
+            return
+        if hasattr(conn, "func_handler") and conn.func_handler is not None:
+            await conn.func_handler.register_iot_tools(descriptors)
+            conn.func_handler.current_support_functions()
 
 
 async def handleIotStatus(conn: "ConnectionHandler", states):

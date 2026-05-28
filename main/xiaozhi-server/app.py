@@ -74,6 +74,14 @@ async def main():
 
         cron_svc = ensure_cron_started(config)
 
+    agent_runtime = None
+    if ((config.get("xiaoclaw") or {}).get("agent") or {}).get("enabled", False):
+        from core.agent.service import ensure_agent_started
+
+        agent_runtime = ensure_agent_started(config)
+        if agent_runtime is not None:
+            await agent_runtime.start()
+
     # 添加 stdin 监控任务
     stdin_task = asyncio.create_task(monitor_stdin())
 
@@ -140,6 +148,9 @@ async def main():
     except asyncio.CancelledError:
         print("任务被取消，清理资源中...")
     finally:
+        if agent_runtime is not None:
+            await agent_runtime.stop()
+
         if cron_svc is not None:
             cron_svc.stop()
 

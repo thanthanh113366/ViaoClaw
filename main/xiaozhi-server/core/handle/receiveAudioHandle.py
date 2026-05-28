@@ -10,6 +10,7 @@ from core.handle.abortHandle import handleAbortMessage
 from core.handle.intentHandler import handle_user_intent, speak_txt
 from core.utils.output_counter import check_device_output_limit
 from core.handle.sendAudioHandle import send_stt_message, SentenceType
+from core.agent.service import is_agent_enabled, is_bridge_enabled
 from core.xiaoclaw import bridge_client
 
 TAG = __name__
@@ -82,7 +83,7 @@ async def startToChat(conn: "ConnectionHandler", text):
         await handleAbortMessage(conn)
 
     xiaoclaw_cfg = conn.config.get("xiaoclaw") or {}
-    if bridge_client.is_enabled(conn.config):
+    if is_bridge_enabled(conn.config):
         if not xiaoclaw_cfg.get("skip_intent", True):
             intent_handled = await handle_user_intent(conn, actual_text)
             if intent_handled:
@@ -110,6 +111,21 @@ async def startToChat(conn: "ConnectionHandler", text):
 
     # 准备开始新会话
     conn.client_abort = False
+
+    if is_agent_enabled(conn.config):
+        from core.agent.service import get_agent_runtime
+        from core.handle.agentOutbound import VoiceOutbound
+
+        runtime = get_agent_runtime()
+        session_key = f"xiaozhi:{conn.device_id}"
+        await runtime.dispatch(
+            session_key,
+            actual_text,
+            outbound=VoiceOutbound(conn),
+            conn=conn,
+            source="user",
+        )
+        return
 
     conn.executor.submit(conn.chat, actual_text)
 

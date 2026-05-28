@@ -7,10 +7,13 @@ from core.cron.mqtt_wake import (
     is_mqtt_wake_enabled,
 )
 from core.cron.registry import ConnectionRegistry
-from core.cron.runner import ExecRunner
+from core.exec.runner import ExecRunner
+from core.exec.service import is_exec_enabled
 from core.cron.store import PendingStore
 
 if TYPE_CHECKING:
+    from core.agent.runtime import AgentRuntime
+    from core.agent.telegram_gateway import TelegramGateway
     from core.connection import ConnectionHandler
 
 TAG = __name__
@@ -29,6 +32,8 @@ class CronFireHandler:
         self.pending_store = pending_store
         self.exec_runner = exec_runner
         self.config = config or {}
+        self.telegram_gateway: Optional["TelegramGateway"] = None
+        self.agent_runtime: Optional["AgentRuntime"] = None
         self._mqtt_wake = (
             MqttWakePublisher(self.config) if is_mqtt_wake_enabled(self.config) else None
         )
@@ -42,18 +47,35 @@ class CronFireHandler:
         command = payload.get("command") or ""
         deliver = bool(payload.get("deliver"))
 
+        logger.bind(tag=TAG).info(
+            f"[cron] fire job id={job_id} channel={channel} deliver={deliver} "
+            f"command={bool(command)} target={target_id}"
+        )
+
+        if channel == "telegram":
+            self._handle_telegram(
+                job_id=job_id,
+                target_id=target_id,
+                message=message,
+                command=command,
+                deliver=deliver,
+            )
+            return
+
         if channel != "xiaozhi":
             raise RuntimeError(f"unsupported channel: {channel}")
 
-        logger.bind(tag=TAG).info(
-            f"[cron] fire job id={job_id} deliver={deliver} command={bool(command)} target={target_id}"
-        )
-
         if command:
-            try:
-                output = self.exec_runner.run(command)
-            except Exception as exc:
-                output = f"Error executing scheduled command: {exc}"
+            if not is_exec_enabled(self.config):
+                output = "Error executing scheduled command: command execution is disabled"
+            else:
+                try:
+                    raw = self.exec_runner.run(command)
+                    output = (
+                        f"Scheduled command '{command}' executed:\n{raw}"
+                    )
+                except Exception as exc:
+                    output = f"Error executing scheduled command: {exc}"
             self._deliver_tts(target_id, output, job_id=job_id)
             return
 
@@ -72,7 +94,89 @@ class CronFireHandler:
                 job_id=job_id,
             )
             return
-        conn.executor.submit(conn.chat, chat_text)
+        from core.agent.cron_bridge import submit_agent_turn
+
+        submit_agent_turn(
+            conn, f"xiaozhi:{target_id}", chat_text, source="cron"
+        )
+
+    def _handle_telegram(
+        self,
+        *,
+        job_id: str,
+        target_id: str,
+        message: str,
+        command: str,
+        deliver: bool,
+    ) -> None:
+        gateway = self.telegram_gateway
+        runtime = self.agent_runtime
+
+        if command:
+            if not is_exec_enabled(self.config):
+                output = "Error executing scheduled command: command execution is disabled"
+            else:
+                try:
+                    raw = self.exec_runner.run(command)
+                    output = f"Scheduled command '{command}' executed:\n{raw}"
+                except Exception as exc:
+                    output = f"Error executing scheduled command: {exc}"
+            self._deliver_telegram(target_id, output, job_id=job_id)
+            return
+
+        if deliver:
+            self._deliver_telegram(target_id, message, job_id=job_id)
+            return
+
+        chat_text = f"[cron {job_id}] {message}"
+        if gateway is None or runtime is None or runtime.loop is None:
+            self.pending_store.append(
+                channel="telegram",
+                target_id=target_id,
+                text=chat_text,
+                mode="chat",
+                job_id=job_id,
+            )
+            return
+
+        import asyncio
+
+        from core.agent.outbound import TelegramOutbound
+
+        async def _run() -> None:
+            outbound = TelegramOutbound(gateway.bot, target_id, gateway.tg_cfg)
+            await runtime.dispatch(
+                f"telegram:{target_id}",
+                chat_text,
+                outbound=outbound,
+                conn=None,
+                channel="telegram",
+                chat_id=str(target_id),
+                source="cron",
+            )
+            await outbound.flush()
+
+        asyncio.run_coroutine_threadsafe(_run(), runtime.loop)
+
+    def _deliver_telegram(
+        self, target_id: str, text: str, *, job_id: str | None = None
+    ) -> None:
+        gateway = self.telegram_gateway
+        runtime = self.agent_runtime
+        if gateway is None or runtime is None or runtime.loop is None:
+            self.pending_store.append(
+                channel="telegram",
+                target_id=target_id,
+                text=text,
+                mode="tts",
+                job_id=job_id,
+            )
+            return
+        import asyncio
+
+        asyncio.run_coroutine_threadsafe(
+            gateway.send_message(target_id, text), runtime.loop
+        )
 
     def _deliver_tts(
         self, target_id: str, text: str, *, job_id: str | None = None

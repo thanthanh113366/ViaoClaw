@@ -87,6 +87,10 @@ class ConnectionRegistry:
             text = item.get("text") or ""
             mode = item.get("mode", "tts")
             if mode == "chat":
-                conn.executor.submit(conn.chat, text)
+                from core.agent.cron_bridge import submit_agent_turn
+
+                submit_agent_turn(
+                    conn, f"xiaozhi:{device_id}", text, source="cron_pending"
+                )
             else:
                 conn.executor.submit(speak_txt, conn, text)

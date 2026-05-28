@@ -47,10 +47,10 @@ def init_cron_service(config: dict, registry) -> Optional["CronService"]:
 
 
 def _build_cron_service(config: dict, registry) -> "CronService":
-    from core.cron.runner import ExecRunner
+    from core.exec.service import get_exec_runner
 
     job_store = JobStore(config)
-    exec_runner = ExecRunner(config)
+    exec_runner = get_exec_runner(config)
     fire_handler = CronFireHandler(
         registry, registry.pending_store, exec_runner, config
     )

@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 
 from config.logger import setup_logging
 from core.cron.service import get_cron_service
+from core.exec.service import is_exec_enabled
 from plugins_func.register import Action, ActionResponse, ToolType, register_function
 
 if TYPE_CHECKING:
@@ -78,11 +79,10 @@ CRON_FUNCTION_DESC = {
                 "deliver": {
                     "type": "boolean",
                     "description": (
-                        "false"
-                        # "How message is used at fire time. "
-                        # "- true : speak message on the speaker via TTS — use a friendly user-facing reminder. "
-                        # "- false (default): send message to yourself as a chat task — use an explicit self-instruction to call tools / perform actions. "
-                        # "Forced false when command is set."
+                        "How message is used at fire time. "
+                        "- true : speak message on the speaker via TTS — use a friendly user-facing reminder. "
+                        "- false (default): send message to yourself as a chat task — use an explicit self-instruction to call tools / perform actions. "
+                        "Forced false when command is set."
                     ),
                 },
                 "target_channel": {
@@ -176,9 +176,13 @@ def _add_job(
             None,
         )
 
-    deliver_value = bool(deliver) if deliver is not None else True
+    deliver_value = bool(deliver) if deliver is not None else False
     command = (command or "").strip()
     if command:
+        if not is_exec_enabled(conn.config):
+            return ActionResponse(
+                Action.ERROR, "command execution is disabled", None
+            )
         if not svc.allow_command and not command_confirm:
             return ActionResponse(
                 Action.ERROR,

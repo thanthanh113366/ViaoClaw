@@ -1,21 +1,29 @@
 import os
 import re
 import subprocess
-from typing import Any
 
 from config.logger import setup_logging
-from core.cron.store import resolve_data_path
 
 TAG = __name__
 logger = setup_logging()
 
 
+def exec_config(config: dict) -> dict:
+    return config.get("exec") or {}
+
+
+def _resolve_workspace_path(path: str) -> str:
+    if os.path.isabs(path):
+        return path
+    server_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(server_root, path)
+
+
 class ExecRunner:
     def __init__(self, config: dict):
-        cron_cfg = config.get("cron") or {}
-        exec_cfg = cron_cfg.get("exec") or {}
+        exec_cfg = exec_config(config)
         workspace = exec_cfg.get("workspace", "/home/mq/.xiaoclaw/workspace")
-        self.workspace = resolve_data_path(workspace) if not os.path.isabs(workspace) else workspace
+        self.workspace = _resolve_workspace_path(workspace)
         self.timeout_seconds = int(exec_cfg.get("timeout_seconds", 60))
         self.max_output_bytes = int(exec_cfg.get("max_output_bytes", 65536))
         self.allow_network = bool(exec_cfg.get("allow_network", True))
@@ -35,29 +43,55 @@ class ExecRunner:
                 return f"command blocked by deny pattern: {pattern.pattern}"
         return None
 
-    def run(self, command: str) -> str:
+    def _resolve_cwd(self, cwd: str | None) -> str:
+        if not cwd:
+            return self.workspace
+        resolved = os.path.abspath(cwd)
+        workspace_abs = os.path.abspath(self.workspace)
+        if resolved == workspace_abs:
+            return resolved
+        try:
+            common = os.path.commonpath([workspace_abs, resolved])
+        except ValueError:
+            common = ""
+        if common != workspace_abs:
+            raise RuntimeError("working directory must stay inside exec workspace")
+        return resolved
+
+    def run(
+        self,
+        command: str,
+        *,
+        cwd: str | None = None,
+        timeout: int | None = None,
+    ) -> str:
         blocked = self._guard_command(command)
         if blocked:
             raise RuntimeError(blocked)
 
         self._ensure_workspace()
+        run_cwd = self._resolve_cwd(cwd)
+        timeout_seconds = self.timeout_seconds if timeout is None else int(timeout)
+
         env = os.environ.copy()
         if not self.allow_network:
             env["http_proxy"] = "http://127.0.0.1:9"
             env["https_proxy"] = "http://127.0.0.1:9"
 
+        logger.bind(tag=TAG).info(f"[xiaoclaw.exec] run cwd={run_cwd!r}")
+
         try:
             completed = subprocess.run(
                 ["/bin/bash", "-c", command],
-                cwd=self.workspace,
+                cwd=run_cwd,
                 capture_output=True,
                 text=True,
-                timeout=self.timeout_seconds,
+                timeout=timeout_seconds,
                 env=env,
             )
         except subprocess.TimeoutExpired as exc:
             raise RuntimeError(
-                f"command timed out after {self.timeout_seconds}s"
+                f"command timed out after {timeout_seconds}s"
             ) from exc
 
         output_parts = []
@@ -76,4 +110,4 @@ class ExecRunner:
             detail = output or f"exit code {completed.returncode}"
             raise RuntimeError(detail)
 
-        return f"Scheduled command '{command}' executed:\n{output or '(no output)'}"
+        return output or "(no output)"

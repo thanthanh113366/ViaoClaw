@@ -212,3 +212,16 @@ class PendingStore:
             store["items"] = remaining
             self._save(store)
             return popped
+
+    def pop_for_channel(self, channel: str, limit: int = 5) -> list[dict]:
+        with self._lock:
+            store = self._load()
+            items = self._purge_expired(store.get("items", []))
+            matched = [item for item in items if item.get("channel") == channel]
+            remaining = [item for item in items if item.get("channel") != channel]
+            popped = matched[:limit]
+            if popped:
+                remaining.extend(matched[limit:])
+            store["items"] = remaining
+            self._save(store)
+            return popped
