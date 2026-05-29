@@ -159,9 +159,50 @@ def remove_punctuation_and_length(text):
 
 
 def check_model_key(modelType, modelKey):
+    if not modelKey:
+        return f"配置错误: {modelType} 的 API key 未设置"
     if "你" in modelKey:
         return f"配置错误: {modelType} 的 API key 未设置,当前值为: {modelKey}"
     return None
+
+
+def _read_env_file_value(name):
+    project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    candidate_files = [
+        os.path.join(project_dir, "data", ".env"),
+        os.path.join(project_dir, ".env"),
+    ]
+    for env_file in candidate_files:
+        if not os.path.exists(env_file):
+            continue
+        try:
+            with open(env_file, "r", encoding="utf-8") as file:
+                for line in file:
+                    stripped = line.strip()
+                    if not stripped or stripped.startswith("#"):
+                        continue
+                    if stripped.startswith("export "):
+                        stripped = stripped[len("export ") :].strip()
+                    key, separator, raw_value = stripped.partition("=")
+                    if separator and key.strip() == name:
+                        return raw_value.strip().strip("'\"")
+        except OSError:
+            continue
+    return ""
+
+
+def resolve_env_config_value(value):
+    """Resolve env placeholders like ${OPENAI_API_KEY} without exposing secrets."""
+    if not isinstance(value, str):
+        return value
+    stripped = value.strip()
+    if stripped.startswith("${") and stripped.endswith("}") and len(stripped) > 3:
+        name = stripped[2:-1]
+        return os.getenv(name, "") or _read_env_file_value(name)
+    if stripped.startswith("$") and len(stripped) > 1:
+        name = stripped[1:]
+        return os.getenv(name, "") or _read_env_file_value(name)
+    return value
 
 
 def parse_string_to_list(value, separator=";"):

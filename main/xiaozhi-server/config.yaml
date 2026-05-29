@@ -10,6 +10,7 @@ server:
   # Địa chỉ và cổng nghe của máy chủ
   ip: 0.0.0.0
   port: 8000
+  timezone: Asia/Ho_Chi_Minh
   # Cổng của dịch vụ http, được sử dụng cho giao diện OTA đơn giản (triển khai dịch vụ đơn lẻ) và giao diện phân tích trực quan
   http_port: 8003
   # Cấu hình websocket này đề cập đến địa chỉ websocket được giao diện ota gửi tới thiết bị
@@ -26,7 +27,7 @@ server:
   # Nếu bạn sử dụng triển khai mạng công cộng, hãy đặt Vision_explain thành địa chỉ mạng công cộng.
   vision_explain: http://你的ip或者域名:端口号/mcp/vision/explain
   # OTA trả về thông tin bù múi giờ
-  timezone_offset: +8
+  timezone_offset: +7
   # Cấu hình xác thực
   auth:
     # Có bật xác thực hay không

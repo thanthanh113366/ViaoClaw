@@ -197,7 +197,7 @@ class ChatSessionFactory:
 
         da_tc_id = "fewshot_da_001"
         dialogue.put(
-            Message(role="user", content="给我讲个故事吧", is_temporary=True)
+            Message(role="user", content="Kể cho mình một câu chuyện đi", is_temporary=True)
         )
         dialogue.put(
             Message(
@@ -206,7 +206,7 @@ class ChatSessionFactory:
                     {
                         "id": da_tc_id,
                         "function": {
-                            "arguments": '{"response": "好呀，你想听什么类型的呀？童话、冒险还是搞笑的？选一个我给你开讲~"}',
+                            "arguments": '{"response": "Được, mình kể một đoạn ngắn trước nhé: có một căn nhà nhỏ sáng đèn giữa cơn mưa, bên trong là tiếng ấm nước reo như đang hát."}',
                             "name": "direct_answer",
                         },
                         "type": "function",
@@ -220,7 +220,7 @@ class ChatSessionFactory:
             Message(
                 role="tool",
                 tool_call_id=da_tc_id,
-                content="好呀，你想听什么类型的呀？童话、冒险还是搞笑的？选一个我给你开讲~",
+                content="Được, mình kể một đoạn ngắn trước nhé: có một căn nhà nhỏ sáng đèn giữa cơn mưa, bên trong là tiếng ấm nước reo như đang hát.",
                 is_temporary=True,
             )
         )

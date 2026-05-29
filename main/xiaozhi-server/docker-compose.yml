@@ -11,7 +11,8 @@ services:
     security_opt:
       - seccomp:unconfined
     environment:
-      - TZ=Asia/Shanghai
+      - TZ=Asia/Ho_Chi_Minh
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
     ports: []
       # ws服务端
       # - "8000:8000"

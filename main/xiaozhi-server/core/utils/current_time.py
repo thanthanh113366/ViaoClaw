@@ -5,6 +5,7 @@
 
 import cnlunar
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 WEEKDAY_MAP = {
     "Monday": "星期一",
@@ -17,26 +18,45 @@ WEEKDAY_MAP = {
 }
 
 
+def get_configured_timezone() -> ZoneInfo:
+    try:
+        from config.config_loader import load_config
+
+        config = load_config()
+        timezone_name = (
+            config.get("server", {}).get("timezone")
+            or config.get("cron", {}).get("timezone")
+            or "Asia/Ho_Chi_Minh"
+        )
+        return ZoneInfo(timezone_name)
+    except Exception:
+        return ZoneInfo("Asia/Ho_Chi_Minh")
+
+
+def now() -> datetime:
+    return datetime.now(get_configured_timezone())
+
+
 def get_current_time() -> str:
     """
     获取当前时间字符串 (格式: HH:MM)
     """
-    return datetime.now().strftime("%H:%M")
+    return now().strftime("%H:%M")
 
 
 def get_current_date() -> str:
     """
     获取今天日期字符串 (格式: YYYY-MM-DD)
     """
-    return datetime.now().strftime("%Y-%m-%d")
+    return now().strftime("%Y-%m-%d")
 
 
 def get_current_weekday() -> str:
     """
     获取今天星期几
     """
-    now = datetime.now()
-    return WEEKDAY_MAP[now.strftime("%A")]
+    current = now()
+    return WEEKDAY_MAP[current.strftime("%A")]
 
 
 def get_current_lunar_date() -> str:
@@ -44,8 +64,8 @@ def get_current_lunar_date() -> str:
     获取农历日期字符串
     """
     try:
-        now = datetime.now()
-        today_lunar = cnlunar.Lunar(now, godType="8char")
+        current = now()
+        today_lunar = cnlunar.Lunar(current, godType="8char")
         return "%s年%s%s" % (
             today_lunar.lunarYearCn,
             today_lunar.lunarMonthCn[:-1],

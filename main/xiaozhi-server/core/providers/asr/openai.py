@@ -4,6 +4,7 @@ from config.logger import setup_logging
 from typing import Optional, Tuple, List
 from core.providers.asr.dto.dto import InterfaceType
 from core.providers.asr.base import ASRProviderBase
+from core.utils.util import check_model_key, resolve_env_config_value
 
 import requests
 
@@ -13,12 +14,18 @@ logger = setup_logging()
 class ASRProvider(ASRProviderBase):
     def __init__(self, config: dict, delete_audio_file: bool):
         self.interface_type = InterfaceType.NON_STREAM
-        self.api_key = config.get("api_key")
+        self.api_key = resolve_env_config_value(config.get("api_key"))
         self.api_url = config.get("base_url")
         self.model = config.get("model_name")
         self.language = config.get("language")        
+        self.prompt = config.get("prompt")
+        self.timeout = config.get("timeout", 30)
         self.output_dir = config.get("output_dir")
         self.delete_audio_file = delete_audio_file
+
+        model_key_msg = check_model_key("ASR", self.api_key)
+        if model_key_msg:
+            logger.bind(tag=TAG).error(model_key_msg)
 
         os.makedirs(self.output_dir, exist_ok=True)
 
@@ -42,6 +49,8 @@ class ASRProvider(ASRProviderBase):
                 "model": self.model,
                 "language": self.language,
             }
+            if self.prompt:
+                data["prompt"] = self.prompt
 
 
             with open(file_path, "rb") as audio_file:  # 使用with语句确保文件关闭
@@ -54,7 +63,8 @@ class ASRProvider(ASRProviderBase):
                     self.api_url,
                     files=files,
                     data=data,
-                    headers=headers
+                    headers=headers,
+                    timeout=self.timeout,
                 )
                 logger.bind(tag=TAG).debug(
                     f"语音识别耗时: {time.time() - start_time:.3f}s | 结果: {response.text}"

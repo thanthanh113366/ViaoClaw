@@ -39,8 +39,8 @@ def hass_get_state(conn: "ConnectionHandler", entity_id=""):
         logger.bind(tag=TAG).error("获取Home Assistant状态超时")
         return ActionResponse(Action.ERROR, "请求超时", None)
     except Exception as e:
-        error_msg = f"执行Home Assistant操作失败"
-        logger.bind(tag=TAG).error(error_msg)
+        error_msg = f"执行Home Assistant操作失败: {e}"
+        logger.bind(tag=TAG).error(error_msg, exc_info=True)
         return ActionResponse(Action.ERROR, error_msg, None)
 
 
@@ -96,4 +96,7 @@ def handle_hass_get_state(conn: "ConnectionHandler", entity_id):
         # response.attributes
 
     else:
+        logger.bind(tag=TAG).error(
+            f"Home Assistant get_state failed: status={response.status_code}, body={response.text[:300]}"
+        )
         return f"切换失败，错误码: {response.status_code}"

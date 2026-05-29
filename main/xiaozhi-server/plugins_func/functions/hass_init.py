@@ -64,7 +64,7 @@ def append_devices_to_prompt(conn):
 
 def initialize_hass_handler(conn):
     ha_config = {}
-    if not conn.load_function_plugin:
+    if getattr(conn, "load_function_plugin", True) is False:
         return ha_config
 
     plugins_config = conn.config.get("plugins", {})

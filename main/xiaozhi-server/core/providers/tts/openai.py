@@ -1,5 +1,5 @@
 import requests
-from core.utils.util import check_model_key
+from core.utils.util import check_model_key, resolve_env_config_value
 from core.providers.tts.base import TTSProviderBase
 from config.logger import setup_logging
 
@@ -14,7 +14,7 @@ class TTSProvider(TTSProviderBase):
 
     def __init__(self, config, delete_audio_file):
         super().__init__(config, delete_audio_file)
-        self.api_key = config.get("api_key")
+        self.api_key = resolve_env_config_value(config.get("api_key"))
         self.api_url = config.get("api_url", "https://api.openai.com/v1/audio/speech")
         self.model = config.get("model", "tts-1")
         if config.get("private_voice"):
@@ -22,6 +22,7 @@ class TTSProvider(TTSProviderBase):
         else:
             self.voice = config.get("voice", "alloy")
         self.audio_file_type = config.get("format", "wav")
+        self.instructions = config.get("instructions")
 
         # 处理空字符串的情况
         speed = config.get("speed", "1.0")
@@ -47,6 +48,8 @@ class TTSProvider(TTSProviderBase):
             "response_format": self.audio_file_type,
             "speed": self.speed,
         }
+        if self.instructions:
+            data["instructions"] = self.instructions
         response = requests.post(self.api_url, json=data, headers=headers)
         if response.status_code == 200:
             if output_file:

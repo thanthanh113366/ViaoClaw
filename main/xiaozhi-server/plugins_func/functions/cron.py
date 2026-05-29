@@ -87,11 +87,18 @@ CRON_FUNCTION_DESC = {
                 },
                 "target_channel": {
                     "type": "string",
-                    "description": "xiaozhi (default).",
+                    "enum": ["xiaozhi", "telegram"],
+                    "description": (
+                        "Optional. Defaults to the current channel: telegram for "
+                        "Telegram chats, xiaozhi for the voice device."
+                    ),
                 },
                 "target_id": {
                     "type": "string",
-                    "description": "device_id override.",
+                    "description": (
+                        "Optional. Defaults to the current Telegram chat id for "
+                        "Telegram, or the current device_id for xiaozhi."
+                    ),
                 },
             },
             "required": ["action"],
@@ -160,10 +167,18 @@ def _add_job(
     target_channel,
     target_id,
 ):
-    device_id = target_id or conn.device_id
-    if not device_id:
+    channel = _resolve_target_channel(conn, target_channel)
+    if channel not in ("xiaozhi", "telegram"):
         return ActionResponse(
-            Action.ERROR, "device_id not available for cron job", None
+            Action.ERROR,
+            f"unsupported target_channel: {channel}",
+            None,
+        )
+
+    resolved_target_id = target_id or conn.device_id
+    if not resolved_target_id:
+        return ActionResponse(
+            Action.ERROR, "target_id not available for cron job", None
         )
     if not message:
         return ActionResponse(Action.ERROR, "message is required for add", None)
@@ -191,7 +206,6 @@ def _add_job(
             )
         deliver_value = False
 
-    channel = target_channel or "xiaozhi"
     name = message[:30]
     job = svc.add_job(
         name=name,
@@ -199,7 +213,7 @@ def _add_job(
         message=message,
         deliver=deliver_value,
         channel=channel,
-        target_id=device_id,
+        target_id=resolved_target_id,
         command=command,
     )
     schedule_info = _format_schedule_info(schedule)
@@ -207,12 +221,23 @@ def _add_job(
         Action.REQLLM,
         (
             f"Cron job scheduled. id={job['id']}, message={message!r}, "
-            f"schedule={schedule_info}, deliver_at_fire={deliver_value}. "
+            f"schedule={schedule_info}, channel={channel}, "
+            f"target_id={resolved_target_id}, deliver_at_fire={deliver_value}. "
             f"Briefly confirm to the user in Vietnamese that the reminder is set; "
             f"do not repeat the full reminder message (that will be spoken at fire time)."
         ),
         None,
     )
+
+
+def _resolve_target_channel(conn, target_channel):
+    explicit = (target_channel or "").strip().lower()
+    if explicit:
+        return explicit
+    current = (getattr(conn, "channel", None) or "").strip().lower()
+    if current in ("xiaozhi", "telegram"):
+        return current
+    return "xiaozhi"
 
 
 def _format_schedule_info(schedule: dict) -> str:

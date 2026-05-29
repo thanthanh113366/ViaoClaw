@@ -1158,6 +1158,8 @@ class ConnectionHandler:
         self.client_voice_window.clear()
         self.last_is_voice = False
         self.vad_last_voice_time = 0.0
+        self._vad_speech_active = False
+        self._vad_stop_sent = False
 
         # Clear ASR buffers
         self.asr_audio.clear()

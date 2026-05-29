@@ -330,6 +330,21 @@ async def send_stt_message(conn: "ConnectionHandler", text):
     conn.client_is_speaking = True
 
 
+async def send_vad_message(
+    conn: "ConnectionHandler",
+    state: str,
+    mode: str | None = None,
+    reason: str | None = None,
+):
+    """Send VAD lifecycle hints to clients that understand them."""
+    message = {"type": "vad", "state": state, "session_id": conn.session_id}
+    if mode:
+        message["mode"] = mode
+    if reason:
+        message["reason"] = reason
+    await conn.websocket.send(json.dumps(message))
+
+
 async def send_display_message(conn: "ConnectionHandler", text):
     """发送纯显示消息"""
     message = {

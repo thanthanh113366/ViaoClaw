@@ -9,7 +9,11 @@ from core.utils.util import audio_to_data
 from core.handle.abortHandle import handleAbortMessage
 from core.handle.intentHandler import handle_user_intent, speak_txt
 from core.utils.output_counter import check_device_output_limit
-from core.handle.sendAudioHandle import send_stt_message, SentenceType
+from core.handle.sendAudioHandle import (
+    SentenceType,
+    send_stt_message,
+    send_vad_message,
+)
 from core.agent.service import is_agent_enabled, is_bridge_enabled
 from core.xiaoclaw import bridge_client
 
@@ -26,6 +30,17 @@ async def handleAudioMessage(conn: "ConnectionHandler", audio):
         if not hasattr(conn, "vad_resume_task") or conn.vad_resume_task.done():
             conn.vad_resume_task = asyncio.create_task(resume_vad_detection(conn))
         return
+    if conn.client_listen_mode != "manual":
+        if have_voice and not getattr(conn, "_vad_speech_active", False):
+            conn._vad_speech_active = True
+            conn._vad_stop_sent = False
+            await send_vad_message(conn, "speech_start", conn.client_listen_mode)
+        if conn.client_voice_stop and not getattr(conn, "_vad_stop_sent", False):
+            conn._vad_speech_active = False
+            conn._vad_stop_sent = True
+            await send_vad_message(
+                conn, "speech_stop", conn.client_listen_mode, "silence"
+            )
     # 设备长时间空闲检测，用于say goodbye
     await no_voice_close_connect(conn, have_voice)
     # 接收音频

@@ -2,6 +2,7 @@ import uuid
 import re
 from typing import List, Dict
 from datetime import datetime
+from core.utils.current_time import get_current_time
 
 
 class Message:
@@ -129,9 +130,7 @@ class Dialogue:
         # 保持 system 角色以确保模型权威性，不降级为 user
         if system_message and dynamic_part:
             # 替换时间占位符
-            dynamic_part = dynamic_part.replace(
-                "{{current_time}}", datetime.now().strftime("%H:%M")
-            )
+            dynamic_part = dynamic_part.replace("{{current_time}}", get_current_time())
 
             # 填充记忆
             if memory_str is not None:

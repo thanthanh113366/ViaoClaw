@@ -64,8 +64,8 @@ def hass_set_state(conn: "ConnectionHandler", entity_id="", state=None):
         logger.bind(tag=TAG).error("设置Home Assistant状态超时")
         return ActionResponse(Action.ERROR, "请求超时", None)
     except Exception as e:
-        error_msg = f"执行Home Assistant操作失败"
-        logger.bind(tag=TAG).error(error_msg)
+        error_msg = f"执行Home Assistant操作失败: {e}"
+        logger.bind(tag=TAG).error(error_msg, exc_info=True)
         return ActionResponse(Action.ERROR, error_msg, None)
 
 
@@ -176,4 +176,7 @@ def handle_hass_set_state(conn: "ConnectionHandler", entity_id, state):
     if response.status_code == 200:
         return description
     else:
+        logger.bind(tag=TAG).error(
+            f"Home Assistant set_state failed: status={response.status_code}, body={response.text[:300]}"
+        )
         return f"设置失败，错误码: {response.status_code}"

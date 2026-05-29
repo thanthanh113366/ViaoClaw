@@ -20,13 +20,13 @@ DIRECT_ANSWER_TOOL = {
     "type": "function",
     "function": {
         "name": "direct_answer",
-        "description": "当用户的请求不匹配其他任何工具时，可用此选项直接回复。将回复内容写在response参数里。",
+        "description": "Use this to answer directly in Vietnamese when the user's request does not match any other tool. Put the full spoken Vietnamese reply in the response parameter.",
         "parameters": {
             "type": "object",
             "properties": {
                 "response": {
                     "type": "string",
-                    "description": "你回复用户的完整内容",
+                    "description": "The full Vietnamese reply to speak to the user.",
                 },
             },
             "required": ["response"],

@@ -7,7 +7,11 @@ if TYPE_CHECKING:
 
 from core.handle.receiveAudioHandle import startToChat
 from core.handle.reportHandle import enqueue_asr_report
-from core.handle.sendAudioHandle import send_stt_message, send_tts_message
+from core.handle.sendAudioHandle import (
+    send_stt_message,
+    send_tts_message,
+    send_vad_message,
+)
 from core.handle.textMessageHandler import TextMessageHandler
 from core.handle.textMessageType import TextMessageType
 from core.utils.util import remove_punctuation_and_length
@@ -31,8 +35,10 @@ class ListenTextMessageHandler(TextMessageHandler):
         if msg_json["state"] == "start":
             # 设备从播放模式切回录音模式,清除所有音频状态和缓冲区
             conn.reset_audio_states()
+            await send_vad_message(conn, "open", conn.client_listen_mode)
         elif msg_json["state"] == "stop":
             conn.client_voice_stop = True
+            await send_vad_message(conn, "closed", conn.client_listen_mode, "stop")
             if conn.asr.interface_type == InterfaceType.STREAM:
                 # 流式模式下，发送结束请求
                 asyncio.create_task(conn.asr._send_stop_request())

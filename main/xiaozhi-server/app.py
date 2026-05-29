@@ -2,6 +2,8 @@ import sys
 import uuid
 import signal
 import asyncio
+import os
+import time
 from aioconsole import ainput
 from config.settings import load_config
 from config.logger import setup_logging
@@ -13,6 +15,17 @@ from core.utils.gc_manager import get_gc_manager
 
 TAG = __name__
 logger = setup_logging()
+
+
+def apply_process_timezone(config: dict) -> None:
+    timezone_name = (
+        config.get("server", {}).get("timezone")
+        or config.get("cron", {}).get("timezone")
+        or "Asia/Ho_Chi_Minh"
+    )
+    os.environ["TZ"] = timezone_name
+    if hasattr(time, "tzset"):
+        time.tzset()
 
 
 async def wait_for_exit() -> None:
@@ -46,6 +59,7 @@ async def monitor_stdin():
 async def main():
     check_ffmpeg_installed()
     config = load_config()
+    apply_process_timezone(config)
 
     # 初始化插件描述（需要在load_config之后、服务启动之前）
     try:

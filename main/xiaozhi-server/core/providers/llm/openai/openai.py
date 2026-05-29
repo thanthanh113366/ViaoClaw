@@ -2,7 +2,7 @@ import httpx
 import openai
 from openai.types import CompletionUsage
 from config.logger import setup_logging
-from core.utils.util import check_model_key
+from core.utils.util import check_model_key, resolve_env_config_value
 from core.providers.llm.base import LLMProviderBase
 from urllib.parse import urlparse
 
@@ -21,7 +21,7 @@ THINKING_DISABLED_DOMAINS = {
 class LLMProvider(LLMProviderBase):
     def __init__(self, config):
         self.model_name = config.get("model_name")
-        self.api_key = config.get("api_key")
+        self.api_key = resolve_env_config_value(config.get("api_key"))
         if "base_url" in config:
             self.base_url = config.get("base_url")
         else:
