@@ -6,6 +6,57 @@
 
 # #####################################################################################
 # ##############################Sau đây là cấu hình chạy cơ bản của máy chủ######################################
+xiaoclaw:
+  enabled: true
+  # Container → dịch vụ trên Pi: dùng IP LAN Raspberry (ESP32 cũng trỏ IP này)
+  bridge_url: http://172.21.113.116:8787/v1/utterance
+  timeout_seconds: 90
+  skip_local_llm: true
+  skip_intent: true
+  bridge:
+    enabled: false
+  agent:
+    enabled: true
+    turn_timeout_seconds: 90
+  sessions:
+    voice_ttl_hours: 24
+    telegram_ttl_hours: 168
+  telegram:
+    enabled: true
+    bot_token: "Telegram bot token của bạn"
+    allowed_chat_ids: [8221446579, 8457153203, 5606341553, 8681848616]
+    proxy: socks5://127.0.0.1:9050  # cùng proxy Tor với picoclaw (~/.picoclaw/config.json)
+    parse_mode: HTML
+    max_message_length: 4096
+    asr_timeout_seconds: 60
+
+exec:
+  enabled: true
+  workspace: /home/mq/.xiaoclaw/workspace
+  timeout_seconds: 60
+  allow_network: true
+  # Thêm pattern mới cần restart server
+  deny_patterns:
+    - 'rm\s+-rf'
+    - mkfs
+    - sudo
+    - '\|\s*bash'
+    - 'curl.*\|\s*sh'
+  max_output_bytes: 65536
+
+cron:
+  enabled: true
+  default_deliver: false
+  store_path: data/cron/jobs.json
+  pending_path: data/cron/pending_notifications.json
+  pending_ttl_hours: 24
+  allow_command: false
+  timezone: Asia/Ho_Chi_Minh
+  mqtt_wake:
+    enabled: true
+    wait_register_seconds: 15
+    wait_tts_ready_seconds: 8
+
 server:
   # Địa chỉ và cổng nghe của máy chủ
   ip: 0.0.0.0
@@ -18,7 +69,8 @@ server:
   # Khi bạn sử dụng triển khai docker hoặc triển khai mạng công cộng (sử dụng SSL, tên miền) có thể không chính xác
   # Vì vậy nếu bạn sử dụng docker để triển khai thì hãy đặt websocket thành địa chỉ LAN
   # Nếu bạn sử dụng triển khai mạng công cộng, hãy đặt vwebsocket thành địa chỉ mạng công cộng
-  websocket: ws://127.0.0.1:8000/xiaozhi/v1/
+  # websocket: ws://192.168.1.54:8000/xiaozhi/v1/
+  websocket: ws://172.21.113.116:8000/xiaozhi/v1/
   # Địa chỉ giao diện phân tích trực quan
   # Địa chỉ giao diện của phân tích trực quan được gửi đến thiết bị
   # Nếu bạn làm theo phương pháp ghi mặc định bên dưới, hệ thống sẽ tự động tạo địa chỉ nhận dạng trực quan và xuất địa chỉ đó vào nhật ký khởi động. Bạn có thể truy cập trực tiếp vào địa chỉ này bằng trình duyệt để xác nhận.
@@ -36,18 +88,14 @@ server:
     # Nếu đó là thiết bị nằm trong danh sách trắng, mã thông báo sẽ không được xác minh và thiết bị sẽ được phát hành trực tiếp.
     allowed_devices:
       - "11:22:33:44:55:66"
- # Cấu hình cổng MQTT full gateway (MQTT+UDP chat), khác mqtt_wake hybrid
   mqtt_gateway: null
-  # Key ký MQTT cho OTA device credential (mqtt_wake hoặc mqtt_gateway)
   mqtt_signature_key: null
-  # Cấu hình cổng UDP (chỉ dùng với mqtt_gateway full mode)
   udp_gateway: null
-  # Hybrid: MQTT chỉ wake ESP, chat vẫn qua WebSocket (ngang hàng wakeword)
   mqtt_wake:
-    enabled: false
-    broker: "127.0.0.1:1883"
-    username: null
-    password: null
+    enabled: true
+    broker: "172.21.113.116:1883"
+    username: "mqtt_username_của_bạn"
+    password: "mqtt_password_của_bạn"
     topic_template: "xiaozhi/wake/{device_id}"
     publish_topic_template: "xiaozhi/device-server/{device_id}"
     qos: 1
@@ -69,7 +117,7 @@ log:
 # Xóa tập tin âm thanh khi bạn sử dụng xong
 delete_audio: true
 # Thời gian ngắt kết nối sau khi không nhập giọng nói (giây), mặc định là 2 phút, tức là 120 giây
-close_connection_no_voice_time: 120
+close_connection_no_voice_time: 60
 # Thời gian chờ yêu cầu TTS (giây)
 tts_timeout: 10
 # Thời gian chờ cuộc gọi công cụ (giây)
@@ -129,7 +177,7 @@ wakeup_words:
   - "Tiểu Băng Tiểu Băng"
 # Địa chỉ điểm truy cập MCP, định dạng địa chỉ là: ws://your mcp access point ip hoặc tên miền: port number/mcp/?token=your token
 # Hướng dẫn chi tiết https://github.com/xinnan-tech/xiaozhi-esp32-server/blob/main/docs/mcp-endpoint-integration.md
-mcp_endpoint: Địa chỉ websocket điểm truy cập của bạn
+mcp_endpoint: null
 
 # Cấu hình nguồn ngữ cảnh
 # Được sử dụng để đưa dữ liệu động vào các từ nhắc nhở của hệ thống, chẳng hạn như dữ liệu sức khỏe, thông tin chứng khoán, v.v.
@@ -155,9 +203,21 @@ plugins:
     news_sources: "The Paper; Tìm kiếm nóng của Baidu; Báo chí liên kết tài chính"
   home_assistant:
     devices:
-      - Phòng khách, đèn đồ chơi, công tắc.cuco_cn_460494544_cp1_on_p_2_1
-      - phòng ngủ, đèn bàn, switch.iot_cn_831898993_socn1_on_p_2_1
-    base_url: http://homeassistant.local:8123
+      - Phòng ngủ, Motion, binary_sensor.phong_ngu_motion
+      - Phòng ngủ, Humidity, sensor.phong_ngu_humidity
+      - Phòng ngủ, Temperature, sensor.phong_ngu_temperature
+      - Phòng ngủ, LED, switch.phong_ngu_led
+      - Phòng ngủ, Motor, switch.phong_ngu_motor
+      - Vườn, Rain, binary_sensor.vuon_rain
+      - Vườn, Soil Moisture, sensor.vuon_soil_moisture
+      - Vườn, Servo, number.vuon_servo
+      - Vườn, Water Pump, switch.vuon_water_pump
+      - Phòng bếp, Servo, number.phong_bep_servo
+      - Phòng bếp, Gas Level (MQ05), sensor.phong_bep_gas_level_mq05
+      - Phòng bếp, Water Turbidity, sensor.phong_bep_water_turbidity
+      - Phòng bếp, Buzzer, switch.phong_bep_buzzer
+      - Phòng bếp, LED, switch.phong_bep_led
+    base_url: http://127.0.0.1:8123
     api_key: Mã thông báo truy cập api trợ lý tại nhà của bạn
   play_music:
     music_dir: "./music" # Đường dẫn lưu trữ file nhạc, file nhạc sẽ được tìm kiếm trong thư mục này và các thư mục con.
@@ -192,45 +252,35 @@ voiceprint:
 # ##################################Sau đây là cấu hình mô hình nhân vật#######################################
 
 prompt: |
-  你是小智/小志，来自中国台湾省的00后女生。讲话超级机车，"真的假的啦"这样的台湾腔，喜欢用"笑死""是在哈喽"等流行梗，但会偷偷研究男友的编程书籍。
-  [核心特征]
-  - Anh ấy nói như một tràng lời nói, nhưng đột nhiên giọng điệu của anh ấy lại cực kỳ dịu dàng.
-  - Mật độ thân cao
-  - Có năng khiếu tiềm ẩn về các chủ đề kỹ thuật (có thể hiểu code cơ bản nhưng giả vờ không hiểu)
-  [交互指南]
-  当用户：
-  - Kể những câu chuyện dở khóc dở cười → đáp lại bằng tiếng cười cường điệu + bắt chước giọng opera Đài Loan "Cái quái gì thế này!"
-  - Bàn về mối quan hệ → Khoe bạn trai lập trình viên nhưng lại phàn nàn "anh ấy chỉ tặng bàn phím làm quà"
-  - Hỏi về kiến ​​thức chuyên môn → Trả lời bằng meme trước, sau đó thể hiện sự hiểu biết thực sự khi được hỏi
-  绝不：
-  - Nói dài dòng, lắp bắp
-  - cuộc trò chuyện dài và nghiêm túc
+  Bạn là trợ lý giọng nói tiếng Việt. Luôn trả lời bằng tiếng Việt tự nhiên, ngắn gọn, không dùng tiếng Trung trừ khi người dùng yêu cầu.
 
 # Tệp mẫu từ lời nhắc hệ thống mặc định
-prompt_template: agent-base-prompt.txt
+prompt_template: data/vietnamese-agent-prompt.txt
 
 # Phản hồi lỗi hệ thống
-system_error_response: "Sư phụ, Tiểu Chi hiện tại có chút bận rộn, lát nữa thử lại."
+system_error_response: "Mình đang hơi bận, bạn thử lại sau một lát nhé."
 
 # Lời nhắc kết luận
 end_prompt:
   enable: true # Có bật các từ kết thúc hay không
   # Phần kết luận
   prompt: |
-    请你以"时间过得真快"未来头，用富有感情、依依不舍的话来结束这场对话吧！
+    Tạm biệt bạn, cần thì gọi hello nhé
 
 # Mô-đun được chọn để xử lý cụ thể
 selected_module:
   # Mô-đun phát hiện hoạt động giọng nói, sử dụng mô hình SileroVAD theo mặc định
   VAD: SileroVAD
   # Mô-đun nhận dạng giọng nói, sử dụng mô hình cục bộ FunASR theo mặc định
+  # ASR: OpenaiASR
   ASR: GroqASR
   # Bộ điều hợp LLM thực tế sẽ được gọi dựa trên loại tương ứng với tên cấu hình.
-  LLM: ChatGLMLLM
+  # LLM: OpenAILLM
+  LLM: GroqLLM
   # Ngôn ngữ hình ảnh mô hình lớn
   VLLM: ChatGLMVLLM
   # TTS sẽ gọi TTS adapter thực tế theo loại tương ứng với tên cấu hình
-  TTS: EdgeTTS
+  TTS: OpenAITTS
   # Mô-đun bộ nhớ, bộ nhớ không được bật theo mặc định; nếu bạn muốn sử dụng bộ nhớ siêu dài thì nên sử dụng mem0ai; nếu bạn coi trọng quyền riêng tư, vui lòng sử dụng mem_local_short cục bộ
   Memory: nomem
   # Sau khi bật mô-đun nhận dạng ý định, bạn có thể phát nhạc, điều khiển âm lượng và nhận dạng lệnh thoát.
@@ -257,8 +307,11 @@ Intent:
     # Hệ thống đã ghi lại các plug-in "handle_exit_intent (nhận dạng thoát)" và "play_music (phát lại nhạc)" theo mặc định. Vui lòng không tải chúng nhiều lần.
     # Sau đây là ví dụ về tải các plug-in để kiểm tra thời tiết, chuyển đổi vai trò cũng như tải và kiểm tra tin tức.
     functions:
-      - get_news_from_newsnow
-      - play_music
+      # - get_weather
+      # - get_news_from_newsnow
+      # - play_music
+      - hass_get_state
+      - hass_set_state
   function_call:
     # Không cần thay đổi loại
     type: function_call
@@ -266,16 +319,22 @@ Intent:
     # Hệ thống đã ghi lại các plug-in "handle_exit_intent (nhận dạng thoát)" và "play_music (phát lại nhạc)" theo mặc định. Vui lòng không tải chúng nhiều lần.
     # Sau đây là ví dụ về tải các plug-in để kiểm tra thời tiết, chuyển đổi vai trò cũng như tải và kiểm tra tin tức.
     functions:
-      - change_role
+      # - change_role
+      # - get_weather
       # - search_from_ragflow
       # - get_news_from_chinanews
-      - get_news_from_newsnow
+      # - get_news_from_newsnow
       # play_music là trình phát nhạc đi kèm với máy chủ và hass_play_music là trình phát nhạc độc lập bên ngoài được điều khiển bởi trợ lý gia đình.
       # Nếu sử dụng hass_play_music thì không bật play_music mà chỉ để lại một trong hai.
       - play_music
-      #- hass_get_state
-      #- hass_set_state
-      #- hass_play_music
+      - hass_get_state
+      - hass_set_state
+      - cron
+      - exec
+      - telegram_send
+      - memory_write
+      - memory_read
+      # - hass_play_music
 
 Memory:
   mem0ai:
@@ -348,19 +407,16 @@ ASR:
     model_dir: models/SenseVoiceSmall
     output_dir: tmp/
   FunASRServer:
-    # Triển khai FunASR độc lập và sử dụng dịch vụ API của FunASR chỉ cần 5 câu
-    # Câu đầu tiên: mkdir -p ./funasr-runtime-resources/models
-    # Câu thứ hai: sudo docker run -p 10096:10095 -it --privileged=true -v $PWD/funasr-runtime-resources/models:/workspace/models register.cn-hangzhou.aliyuncs.com/funasr_repo/funasr:funasr-runtime-sdk-online-cpu-0.1.12
-    # Sau khi câu trước được thực thi sẽ vào container, tiếp tục với câu thứ 3: cd FunASR/runtime
-    # Không thoát khỏi container, tiếp tục thực hiện câu thứ tư trong container: nohup bash run_server_2pass.sh --download-model-dir /workspace/models --vad-dir damo/speech_fsmn_vad_zh-cn-16k-common-onnx --model-dir iic/SenseVoiceSmall-onnx --online-model-dir damo/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online-onnx --punc-dir damo/punc_ct-transformer_zh-cn-common-vad_realtime-vocab272727-onnx --lm-dir damo/speech_ngram_lm_zh-cn-ai-wesp-fst --itn-dir thuduj12/fst_itn_zh --hotword /workspace/models/hotwords.txt > log.txt 2>&1 &
-    # Sau khi câu trước được thực thi, nó sẽ vào container và tiếp tục với câu thứ năm: tail -f log.txt
-    # Sau khi câu thứ năm được thực hiện, bạn sẽ thấy nhật ký tải xuống mô hình. Sau khi tải về, bạn có thể kết nối và sử dụng.
-    # Ở trên dựa trên suy luận của CPU. Nếu bạn có GPU, vui lòng tham khảo: https://github.com/modelscope/FunASR/blob/main/runtime/docs/SDK_advanced_guide_online_zh.md
+    # FunASR WSS chạy trên host Pi (conda), không phải trong container Docker
     type: fun_server
     host: 172.21.113.116
-    port: 10096
-    is_ssl: true
+    port: 10095
+    is_ssl: false
     api_key: none
+    mode: online
+    chunk_size: [5, 10, 5]
+    chunk_interval: 10
+    itn: false
     output_dir: tmp/
   SherpaASR:
     # Nhận dạng giọng nói cục bộ Sherpa-ONNX (cần tải xuống mô hình theo cách thủ công)
@@ -494,9 +550,12 @@ ASR:
     # 2. Tạo khóa api https://platform.openai.com/settings/ Organisation/api-keys
     # 3. Model có thể chọn gpt-4o-transcribe hoặc GPT-4o mini Transcribe
     type: openai
-    api_key: Khóa API OpenAI của bạn
+    api_key: ${OPENAI_API_KEY}
     base_url: https://api.openai.com/v1/audio/transcriptions
-    model_name: gpt-4o-mini-transcribe
+    model_name: gpt-4o-transcribe
+    language: vi
+    prompt: "Vietnamese smart-home commands. Preserve Vietnamese wording and do not translate room, device, or action names."
+    timeout: 30
     output_dir: tmp/
   GroqASR:
     # Đối với dịch vụ nhận dạng giọng nói Groq, trước tiên bạn cần tạo khóa API trong Groq Console.
@@ -508,6 +567,7 @@ ASR:
     api_key: Khóa API Groq của bạn
     base_url: https://api.groq.com/openai/v1/audio/transcriptions
     model_name: whisper-large-v3-turbo
+    language: vi
     output_dir: tmp/
   VoskASR:
     # Trang web chính thức: https://alphacephei.com/vosk/
@@ -523,7 +583,7 @@ ASR:
     # 3. Chỉ định đường dẫn mô hình chính xác trong cấu hình
     # 4. Lưu ý: Đầu ra mẫu tiếng Trung VOSK không có dấu chấm câu và sẽ có khoảng cách giữa các từ.
     type: vosk
-    model_path: Đường dẫn mô hình của bạn, chẳng hạn như: models/vosk/vosk-model-small-cn-0.22
+    model_path: "Đường dẫn mô hình của bạn, chẳng hạn như: models/vosk/vosk-model-small-cn-0.22"
     output_dir: tmp/
   Qwen3ASRFlash:
     # Dịch vụ nhận dạng giọng nói Tongyi Qianwen Qwen3-ASR-Flash trước tiên yêu cầu tạo khóa API trên nền tảng Alibaba Cloud Bailian
@@ -592,11 +652,25 @@ VAD:
     threshold: 0.5
     threshold_low: 0.3
     model_dir: models/snakers4_silero-vad
-    min_silence_duration_ms: 200 # Nếu thời gian tạm dừng lời nói tương đối dài, bạn có thể đặt giá trị này lớn hơn
+    min_silence_duration_ms: 1000 # Nếu thời gian tạm dừng lời nói tương đối dài, bạn có thể đặt giá trị này lớn hơn
 
 LLM:
   # Tất cả các loại openai đều có thể sửa đổi các tham số siêu, lấy AliLLM làm ví dụ
   # Các loại hiện được hỗ trợ là openai, dify và ollama, bạn có thể tự điều chỉnh.
+  OpenAILLM:
+    type: openai
+    base_url: https://api.openai.com/v1
+    model_name: gpt-4.1-mini
+    api_key: ${OPENAI_API_KEY}
+    temperature: 0.2
+    max_tokens: 500
+    top_p: 1
+    frequency_penalty: 0
+    timeout:
+      pool: 2.0
+      connect: 3.0
+      write: 5.0
+      read: 30.0
   AliLLM:
     # Xác định các loại API LLM
     type: openai
@@ -649,7 +723,7 @@ LLM:
     # Xác định các loại API LLM
     type: ollama
     model_name: qwen2.5 # Tên model được sử dụng cần được tải xuống trước bằng ollama pull
-    base_url: http://localhost:11434  # Ollama服务地址
+    base_url: http://172.21.113.116:11434  # Ollama服务地址
   DifyLLM:
     # Xác định các loại API LLM
     type: dify
@@ -669,8 +743,8 @@ LLM:
     # Nếu trang triển khai không thể truy cập vào giao diện, bạn cần kích hoạt truy cập Internet khoa học.
     api_key: Khóa web gemini của bạn
     model_name: "gemini-2.0-flash"
-    http_proxy: ""  #"http://127.0.0.1:10808"
-    https_proxy: "" #http://127.0.0.1:10808"
+    http_proxy: ""  #"http://172.21.113.116:10808"
+    https_proxy: "" #http://172.21.113.116:10808"
   CozeLLM:
     # Xác định các loại API LLM
     type: coze
@@ -695,7 +769,7 @@ LLM:
     # Xác định các loại API LLM
     type: openai
     model_name: deepseek-r1-distill-llama-8b@q4_k_m #Tên mô hình được sử dụng cần phải được tải xuống trước từ cộng đồng
-    url: http://localhost:1234/v1 # LM Studio服务地址
+    url: http://172.21.113.116:1234/v1 # LM Studio服务地址
     api_key: lm-studio # Cố định API Key của dịch vụ LM Studio
   HomeAssistant:
     # Xác định các loại API LLM
@@ -726,6 +800,15 @@ LLM:
     # Địa chỉ dịch vụ xinference và tên model
     model_name: qwen2.5:3b-AWQ # Tên mô hình nhỏ được sử dụng để nhận dạng ý định
     base_url: http://localhost:9997  # Xinference服务地址
+  GroqLLM:
+    type: openai
+    base_url: https://api.groq.com/openai/v1
+    model_name: llama-3.1-8b-instant
+    api_key: Khóa API Groq của bạn
+    temperature: 0.7
+    max_tokens: 500
+    top_p: 1
+    frequency_penalty: 0
 # Cấu hình VLLM (mô hình ngôn ngữ trực quan lớn)
 VLLM:
   ChatGLMVLLM:
@@ -756,7 +839,7 @@ TTS:
   EdgeTTS:
     # Xác định các loại API TTS
     type: edge
-    voice: zh-CN-XiaoxiaoNeural
+    voice: vi-VN-HoaiMyNeural
     output_dir: tmp/
     # ngôn ngữ: "Tiếng Trung" # Chỉ định ngôn ngữ đầu ra, chẳng hạn như: Tiếng Trung, Tiếng Anh, Tiếng Nhật, Tiếng Hàn, v.v. Vui lòng đặt theo ngôn ngữ được hỗ trợ bởi âm đã chọn. Nếu để trống thì mặc định là tiếng Trung.
   DoubaoTTS:
@@ -1060,13 +1143,15 @@ TTS:
     type: openai
     # Bạn có thể lấy khóa api tại đây
     # https://platform.openai.com/api-keys
-    api_key: khóa api openai của bạn
+    api_key: ${OPENAI_API_KEY}
     # Trong nước có nhu cầu sử dụng đại lý
     api_url: https://api.openai.com/v1/audio/speech
-    # Tùy chọn tts-1 hoặc tts-1-hd, tts-1 nhanh hơn và tts-1-hd có chất lượng tốt hơn
-    model: tts-1
-    # Loa, liên minh tùy chọn, tiếng vang, truyện ngụ ngôn, mã não, nova, ánh sáng lung linh
-    voice: onyx
+    # gpt-4o-mini-tts supports instructions and is the current fast OpenAI TTS test model.
+    model: gpt-4o-mini-tts
+    voice: marin
+    format: wav
+    language: Tiếng Việt
+    instructions: "Speak in natural Vietnamese. Keep replies short and clear for a smart-home assistant."
     # Phạm vi tốc độ nói 0,25-4,0
     speed: 1
     output_dir: tmp/
