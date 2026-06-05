@@ -2,12 +2,13 @@
 
 Backend voice AI cho **quản gia nhà thông minh ViaoClaw**, fork từ [xiaozhi-esp32-server](https://github.com/xinnan-tech/xiaozhi-esp32-server).
 
-Repo GitHub của dự án gồm **hai thư mục chính**:
+Repo GitHub của dự án gồm **ba thư mục chính**:
 
 ```
 .
 ├── main/          # Mã nguồn: server, API quản trị, web/mobile
-└── docs/          # Tài liệu triển khai, tích hợp, FAQ
+├── docs/          # Tài liệu triển khai, tích hợp, FAQ
+└── benchmark/     # Benchmark suite B1–B7 (latency, ASR, funcall, …)
 ```
 
 ---
@@ -114,9 +115,36 @@ Kiến trúc chi tiết: [main/README.md](main/README.md) (tiếng Trung, bản 
 
 ---
 
-## Benchmark (repo workspace)
+## Benchmark (`benchmark/`)
 
-Bộ đo chất lượng **B1–B7** (latency, ASR WER, function-call, cron, MQTT, exec, parity) nằm ở repo workspace `benchmark/` — không nằm trong folder này khi push GitHub. Xem hướng dẫn chạy trong repo gốc nếu có.
+Bộ đo chất lượng tích hợp **B1–B7**: latency voice, ASR WER, function-call, cron, MQTT wake, exec guard, parity Telegram/Voice.
+
+| ID | Đo gì |
+|----|--------|
+| B1 | Latency voice E2E (WebSocket → TTS) |
+| B2 | ASR WER tiếng Việt |
+| B3 | Function-call accuracy (25 scenario) |
+| B4 | Cron timing |
+| B5 | MQTT offline wake |
+| B6 | Exec command guard |
+| B7 | Parity Telegram vs Voice |
+
+```bash
+cd xiaozhi-esp32-server   # root repo
+
+python3 -m venv .venv-benchmark
+source .venv-benchmark/bin/activate
+python -m pip install -r benchmark/requirements.txt
+
+python -m benchmark.runner --mode mock
+python -m benchmark.runner --mode live --only B3
+```
+
+Hướng dẫn đầy đủ: **[benchmark/README.md](benchmark/README.md)**
+
+Benchmark import module từ `main/xiaozhi-server/` — chạy từ **root repo**, không chạy từ trong `main/xiaozhi-server/`.
+
+Unit test nhỏ trong server (cron/exec): `main/xiaozhi-server/benchmarks/`.
 
 ---
 
@@ -131,8 +159,6 @@ cd main/xiaozhi-server
 
 docker restart xiaozhi-esp32-server
 ```
-
-Benchmark nội bộ server (cron/exec/telegram): `main/xiaozhi-server/benchmarks/`.
 
 ---
 

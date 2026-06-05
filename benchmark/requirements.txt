@@ -1,0 +1,25 @@
+jiwer
+rich
+pytest
+pytest-asyncio
+paho-mqtt
+ruff
+requests
+websockets
+opuslib-next
+PyYAML
+httpx
+numpy
+apscheduler
+openai
+loguru
+PyJWT
+cryptography
+aiohttp
+ruamel.yaml
+ormsgpack
+psutil
+chardet
+jinja2
+audioop-lts; python_version >= "3.13"
+

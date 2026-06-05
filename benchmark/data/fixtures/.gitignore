@@ -1,0 +1,6 @@
+# Bỏ qua file audio fixtures — quá lớn cho git, generate bằng script hoặc tải riêng
+*.wav
+*.mp3
+*.ogg
+*.opus
+*.flac
