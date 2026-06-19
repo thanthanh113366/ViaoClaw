@@ -1,6 +1,6 @@
-// 配置管理模块
+// Config management module
 
-// 生成随机MAC地址
+// Generate random MAC address
 function generateRandomMac() {
     const hexDigits = '0123456789ABCDEF';
     let mac = '';
@@ -13,14 +13,14 @@ function generateRandomMac() {
     return mac;
 }
 
-// 加载配置
+// Load config
 export function loadConfig() {
     const deviceMacInput = document.getElementById('deviceMac');
     const deviceNameInput = document.getElementById('deviceName');
     const clientIdInput = document.getElementById('clientId');
     const otaUrlInput = document.getElementById('otaUrl');
 
-    // 从localStorage加载MAC地址，如果没有则生成新的
+    // Load MAC address from localStorage, generate if missing
     let savedMac = localStorage.getItem('xz_tester_deviceMac');
     if (!savedMac) {
         savedMac = generateRandomMac();
@@ -28,7 +28,7 @@ export function loadConfig() {
     }
     deviceMacInput.value = savedMac;
 
-    // 从localStorage加载其他配置
+    // Load other config from localStorage
     const savedDeviceName = localStorage.getItem('xz_tester_deviceName');
     if (savedDeviceName) {
         deviceNameInput.value = savedDeviceName;
@@ -45,7 +45,7 @@ export function loadConfig() {
     }
 }
 
-// 保存配置
+// Save config
 export function saveConfig() {
     const deviceMacInput = document.getElementById('deviceMac');
     const deviceNameInput = document.getElementById('deviceName');
@@ -56,22 +56,22 @@ export function saveConfig() {
     localStorage.setItem('xz_tester_clientId', clientIdInput.value);
 }
 
-// 获取配置值
+// Get config values
 export function getConfig() {
-    // 从DOM获取值
+    // Get values from DOM
     const deviceMac = document.getElementById('deviceMac')?.value.trim() || '';
     const deviceName = document.getElementById('deviceName')?.value.trim() || '';
     const clientId = document.getElementById('clientId')?.value.trim() || '';
 
     return {
-        deviceId: deviceMac,  // 使用MAC地址作为deviceId
+        deviceId: deviceMac,  // use MAC address as deviceId
         deviceName,
         deviceMac,
         clientId
     };
 }
 
-// 保存连接URL
+// Save connection URL
 export function saveConnectionUrls() {
     const otaUrl = document.getElementById('otaUrl').value.trim();
     const wsUrl = document.getElementById('serverUrl').value.trim();

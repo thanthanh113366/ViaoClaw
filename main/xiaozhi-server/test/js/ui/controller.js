@@ -158,36 +158,36 @@ class UIController {
                 cameraTimer = setTimeout(() => {
                     const cameraContainer = document.getElementById('cameraContainer');
                     if (!cameraContainer) {
-                        log('摄像头容器不存在', 'warning');
+                        log('Camera container not found', 'warning');
                         return;
                     }
 
                     const isActive = cameraContainer.classList.contains('active');
                     if (isActive) {
-                        // 关闭摄像头
+                        // Close camera
                         if (typeof window.stopCamera === 'function') {
                             if (cameraSwitch) cameraSwitch.classList.remove('active');
                             window.stopCamera();
                         }
                         cameraContainer.classList.remove('active');
                         cameraBtn.classList.remove('camera-active');
-                        cameraBtn.querySelector('.btn-text').textContent = '摄像头';
-                        log('摄像头已关闭', 'info');
+                        cameraBtn.querySelector('.btn-text').textContent = 'Camera';
+                        log('Camera closed', 'info');
                     } else {
-                        // 打开摄像头
+                        // Open camera
                         if (typeof window.startCamera === 'function') {
                             window.startCamera().then(success => {
                                 if (success) {
                                     cameraBtn.classList.add('camera-active');
-                                    cameraBtn.querySelector('.btn-text').textContent = '关闭';
+                                    cameraBtn.querySelector('.btn-text').textContent = 'Close';
                                 } else {
-                                    this.addChatMessage('⚠️ 摄像头启动失败，请检查浏览器权限', false);
+                                    this.addChatMessage('⚠️ Camera failed to start, please check browser permissions', false);
                                 }
                             }).catch(error => {
-                                log(`启动摄像头异常: ${error.message}`, 'error');
+                                log(`Camera start error: ${error.message}`, 'error');
                             });
                         } else {
-                            log('startCamera函数未定义', 'warning');
+                            log('startCamera function not defined', 'warning');
                         }
                     }
                 }, 300);
@@ -209,11 +209,11 @@ class UIController {
                         audioRecorder.stop();
                         // Restore record button to normal state
                         recordBtn.classList.remove('recording');
-                        recordBtn.querySelector('.btn-text').textContent = '录音';
+                        recordBtn.querySelector('.btn-text').textContent = 'Record';
                     } else {
                         // Update button state to recording
                         recordBtn.classList.add('recording');
-                        recordBtn.querySelector('.btn-text').textContent = '录音中';
+                        recordBtn.querySelector('.btn-text').textContent = 'Recording';
 
                         // Start recording, update button state after delay
                         setTimeout(() => {
@@ -262,15 +262,15 @@ class UIController {
             });
         });
 
-        // 点击模态框背景关闭（仅对特定模态框禁用此功能）
+        // Close modal on background click (disabled for specific modals)
         const modals = document.querySelectorAll('.modal');
         modals.forEach(modal => {
             modal.addEventListener('click', (e) => {
                 if (e.target === modal) {
-                    // settingsModal、mcpToolModal、mcpPropertyModal 只能通过点击X关闭
+                    // settingsModal, mcpToolModal, mcpPropertyModal can only be closed via X button
                     const nonClosableModals = ['settingsModal', 'mcpToolModal', 'mcpPropertyModal'];
                     if (nonClosableModals.includes(modal.id)) {
-                        return; // 禁止点击背景关闭
+                        return; // Prevent closing on background click
                     }
                     this.hideModal(modal.id);
                 }
@@ -296,12 +296,12 @@ class UIController {
 
         if (connectionStatus) {
             if (isConnected) {
-                connectionStatus.textContent = '已连接';
+                connectionStatus.textContent = 'Connected';
                 if (statusDot) {
                     statusDot.className = 'status-dot status-connected';
                 }
             } else {
-                connectionStatus.textContent = '离线';
+                connectionStatus.textContent = 'Offline';
                 if (statusDot) {
                     statusDot.className = 'status-dot status-disconnected';
                 }
@@ -318,14 +318,14 @@ class UIController {
         if (dialBtn) {
             if (isConnected) {
                 dialBtn.classList.add('dial-active');
-                dialBtn.querySelector('.btn-text').textContent = '挂断';
+                dialBtn.querySelector('.btn-text').textContent = 'Hang Up';
                 // Update dial button icon to hang up icon
                 dialBtn.querySelector('svg').innerHTML = `
                     <path d="M12,9C10.4,9 9,10.4 9,12C9,13.6 10.4,15 12,15C13.6,15 15,13.6 15,12C15,10.4 13.6,9 12,9M12,17C9.2,17 7,14.8 7,12C7,9.2 9.2,7 12,7C14.8,7 17,9.2 17,12C17,14.8 14.8,17 12,17M12,4.5C7,4.5 2.7,7.6 1,12C2.7,16.4 7,19.5 12,19.5C17,19.5 21.3,16.4 23,12C21.3,7.6 17,4.5 12,4.5Z"/>
                 `;
             } else {
                 dialBtn.classList.remove('dial-active');
-                dialBtn.querySelector('.btn-text').textContent = '拨号';
+                dialBtn.querySelector('.btn-text').textContent = 'Dial';
                 // Restore dial button icon
                 dialBtn.querySelector('svg').innerHTML = `
                     <path d="M6.62,10.79C8.06,13.62 10.38,15.94 13.21,17.38L15.41,15.18C15.69,14.9 16.08,14.82 16.43,14.93C17.55,15.3 18.75,15.5 20,15.5A1,1 0 0,1 21,16.5V20A1,1 0 0,1 20,21A17,17 0 0,1 3,4A1,1 0 0,1 4,3H7.5A1,1 0 0,1 8.5,4C8.5,5.25 8.7,6.45 9.07,7.57C9.18,7.92 9.1,8.31 8.82,8.59L6.62,10.79Z"/>
@@ -340,10 +340,10 @@ class UIController {
                 cameraContainer.classList.remove('active');
             }
             cameraBtn.classList.remove('camera-active');
-            cameraBtn.querySelector('.btn-text').textContent = '摄像头';
+            cameraBtn.querySelector('.btn-text').textContent = 'Camera';
             cameraBtn.disabled = true;
-            cameraBtn.title = '请先连接服务器';
-            // 关闭摄像头
+            cameraBtn.title = 'Please connect to server first';
+            // Close camera
             if (typeof window.stopCamera === 'function') {
                 window.stopCamera();
             }
@@ -353,10 +353,10 @@ class UIController {
         if (cameraBtn && isConnected) {
             if (window.cameraAvailable) {
                 cameraBtn.disabled = false;
-                cameraBtn.title = '打开/关闭摄像头';
+                cameraBtn.title = 'Open/Close Camera';
             } else {
                 cameraBtn.disabled = true;
-                cameraBtn.title = '请先绑定验证码';
+                cameraBtn.title = 'Please bind verification code first';
             }
         }
 
@@ -365,19 +365,19 @@ class UIController {
             const microphoneAvailable = window.microphoneAvailable !== false;
             if (isConnected && microphoneAvailable) {
                 recordBtn.disabled = false;
-                recordBtn.title = '开始录音';
+                recordBtn.title = 'Start Recording';
                 // Restore record button to normal state
-                recordBtn.querySelector('.btn-text').textContent = '录音';
+                recordBtn.querySelector('.btn-text').textContent = 'Record';
                 recordBtn.classList.remove('recording');
             } else {
                 recordBtn.disabled = true;
                 if (!microphoneAvailable) {
-                    recordBtn.title = window.isHttpNonLocalhost ? '当前由于是http访问，无法录音，只能用文字交互' : '麦克风不可用';
+                    recordBtn.title = window.isHttpNonLocalhost ? 'Recording unavailable over HTTP, text chat only' : 'Microphone unavailable';
                 } else {
-                    recordBtn.title = '请先连接服务器';
+                    recordBtn.title = 'Please connect to server first';
                 }
                 // Restore record button to normal state
-                recordBtn.querySelector('.btn-text').textContent = '录音';
+                recordBtn.querySelector('.btn-text').textContent = 'Record';
                 recordBtn.classList.remove('recording');
             }
         }
@@ -388,10 +388,10 @@ class UIController {
         const recordBtn = document.getElementById('recordBtn');
         if (recordBtn) {
             if (isRecording) {
-                recordBtn.querySelector('.btn-text').textContent = `录音中`;
+                recordBtn.querySelector('.btn-text').textContent = `Recording`;
                 recordBtn.classList.add('recording');
             } else {
-                recordBtn.querySelector('.btn-text').textContent = '录音';
+                recordBtn.querySelector('.btn-text').textContent = 'Record';
                 recordBtn.classList.remove('recording');
             }
             // Only enable button when microphone is available
@@ -411,15 +411,15 @@ class UIController {
             // Disable record button
             recordBtn.disabled = true;
             // Update button text and title
-            recordBtn.querySelector('.btn-text').textContent = '录音';
-            recordBtn.title = isHttpNonLocalhost ? '当前由于是http访问，无法录音，只能用文字交互' : '麦克风不可用';
+            recordBtn.querySelector('.btn-text').textContent = 'Record';
+            recordBtn.title = isHttpNonLocalhost ? 'Recording unavailable over HTTP, text chat only' : 'Microphone unavailable';
 
         } else {
             // If connected, enable record button
             const wsHandler = getWebSocketHandler();
             if (wsHandler && wsHandler.isConnected()) {
                 recordBtn.disabled = false;
-                recordBtn.title = '开始录音';
+                recordBtn.title = 'Start Recording';
             }
         }
     }
@@ -452,7 +452,7 @@ class UIController {
     switchLive2DModel() {
         const modelSelect = document.getElementById('live2dModelSelect');
         if (!modelSelect) {
-            console.error('模型选择下拉框不存在');
+            console.error('Model select dropdown not found');
             return;
         }
 
@@ -463,17 +463,17 @@ class UIController {
             app.live2dManager.switchModel(selectedModel)
                 .then(success => {
                     if (success) {
-                        this.addChatMessage(`已切换到模型: ${selectedModel}`, false);
+                        this.addChatMessage(`Switched to model: ${selectedModel}`, false);
                     } else {
-                        this.addChatMessage('模型切换失败', false);
+                        this.addChatMessage('Model switch failed', false);
                     }
                 })
                 .catch(error => {
-                    console.error('模型切换错误:', error);
-                    this.addChatMessage('模型切换出错', false);
+                    console.error('Model switch error:', error);
+                    this.addChatMessage('Model switch error', false);
                 });
         } else {
-            this.addChatMessage('Live2D管理器未初始化', false);
+            this.addChatMessage('Live2D manager not initialized', false);
         }
     }
 
@@ -514,13 +514,13 @@ class UIController {
 
     // Start AI chat session after connection
     startAIChatSession() {
-        this.addChatMessage('连接成功，开始聊天吧~😊', false);
+        this.addChatMessage('Connected! Let\'s chat~😊', false);
         // Check microphone availability and show error messages if needed
         if (!window.microphoneAvailable) {
             if (window.isHttpNonLocalhost) {
-                this.addChatMessage('⚠️ 当前由于是http访问，无法录音，只能用文字交互', false);
+                this.addChatMessage('⚠️ Recording unavailable over HTTP, text chat only', false);
             } else {
-                this.addChatMessage('⚠️ 麦克风不可用，请检查权限设置，只能用文字交互', false);
+                this.addChatMessage('⚠️ Microphone unavailable, please check permissions. Text chat only.', false);
             }
         }
         // Start recording only if microphone is available
@@ -537,13 +537,13 @@ class UIController {
                     const cameraBtn = document.getElementById('cameraBtn');
                     if (cameraBtn) {
                         cameraBtn.classList.add('camera-active');
-                        cameraBtn.querySelector('.btn-text').textContent = '关闭';
+                        cameraBtn.querySelector('.btn-text').textContent = 'Close';
                     }
                 } else {
-                    this.addChatMessage('⚠️ 摄像头启动失败，可能被浏览器拒绝', false);
+                    this.addChatMessage('⚠️ Camera failed to start, possibly denied by browser', false);
                 }
             }).catch(error => {
-                log(`启动摄像头异常: ${error.message}`, 'error');
+                log(`Camera start error: ${error.message}`, 'error');
             });
         }
     }
@@ -563,7 +563,7 @@ class UIController {
         console.log('otaUrl element:', otaUrlInput);
 
         if (!otaUrlInput || !otaUrlInput.value) {
-            this.addChatMessage('请输入OTA服务器地址', false);
+            this.addChatMessage('Please enter OTA server URL', false);
             return;
         }
 
@@ -574,12 +574,12 @@ class UIController {
         const dialBtn = document.getElementById('dialBtn');
         if (dialBtn) {
             dialBtn.classList.add('dial-active');
-            dialBtn.querySelector('.btn-text').textContent = '连接中...';
+            dialBtn.querySelector('.btn-text').textContent = 'Connecting...';
             dialBtn.disabled = true;
         }
 
         // Show connecting message
-        this.addChatMessage('正在连接服务器...', false);
+        this.addChatMessage('Connecting to server...', false);
 
         const chatIpt = document.getElementById('chatIpt');
         if (chatIpt) {
@@ -608,10 +608,10 @@ class UIController {
                 if (recordBtn) {
                     if (isRecording) {
                         recordBtn.classList.add('recording');
-                        recordBtn.querySelector('.btn-text').textContent = '录音中';
+                        recordBtn.querySelector('.btn-text').textContent = 'Recording';
                     } else {
                         recordBtn.classList.remove('recording');
-                        recordBtn.querySelector('.btn-text').textContent = '录音';
+                        recordBtn.querySelector('.btn-text').textContent = 'Record';
                     }
                 }
             };
@@ -626,7 +626,7 @@ class UIController {
                 if (!micAvailable) {
                     const isHttp = window.isHttpNonLocalhost;
                     if (isHttp) {
-                        this.addChatMessage('⚠️ 当前由于是http访问，无法录音，只能用文字交互', false);
+                        this.addChatMessage('⚠️ Recording unavailable over HTTP, text chat only', false);
                     }
                     // Update global state
                     window.microphoneAvailable = false;
@@ -638,13 +638,13 @@ class UIController {
                     if (!this.dialBtnDisabled) {
                         dialBtn.disabled = false;
                     }
-                    dialBtn.querySelector('.btn-text').textContent = '挂断';
+                    dialBtn.querySelector('.btn-text').textContent = 'Hang Up';
                     dialBtn.classList.add('dial-active');
                 }
 
                 this.hideModal('settingsModal');
             } else {
-                throw new Error('OTA连接失败');
+                throw new Error('OTA connection failed');
             }
         } catch (error) {
             console.error('Connection error details:', {
@@ -655,8 +655,8 @@ class UIController {
 
             // Show error message
             const errorMessage = error.message.includes('Cannot set properties of null')
-                ? '连接失败：请检查设备连接'
-                : `连接失败: ${error.message}`;
+                ? 'Connection failed: please check device connection'
+                : `Connection failed: ${error.message}`;
 
             this.addChatMessage(errorMessage, false);
 
@@ -666,7 +666,7 @@ class UIController {
                 if (!this.dialBtnDisabled) {
                     dialBtn.disabled = false;
                 }
-                dialBtn.querySelector('.btn-text').textContent = '拨号';
+                dialBtn.querySelector('.btn-text').textContent = 'Dial';
                 dialBtn.classList.remove('dial-active');
                 console.log('Dial button state restored successfully');
             }
@@ -683,9 +683,9 @@ class UIController {
         toolDiv.className = 'properties-container';
         toolDiv.innerHTML = `
             <div class="property-item">
-                <input type="text" placeholder="工具名称" value="新工具">
-                <input type="text" placeholder="工具描述" value="工具描述">
-                <button class="remove-property" onclick="uiController.removeMCPTool('${toolId}')">删除</button>
+                <input type="text" placeholder="Tool name" value="New Tool">
+                <input type="text" placeholder="Tool description" value="Tool description">
+                <button class="remove-property" onclick="uiController.removeMCPTool('${toolId}')">Remove</button>
             </div>
         `;
 
