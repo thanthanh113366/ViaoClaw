@@ -47,12 +47,28 @@ async def _live_transcribe(sample: dict, config: dict) -> str:
 
     audio_path = Path(config["paths"]["asr_fixture_dir"]) / Path(sample["audio_file"]).name
     b2 = config.get("b2") or {}
+
+    # Local Sherpa ASR path
+    asr_type = b2.get("asr_type", "cloud")
+    if asr_type == "local":
+        from benchmark.adapters.asr_local import transcribe_local_sherpa
+
+        model_dir = b2.get("model_dir", "")
+        model_type = b2.get("model_type", "zipformer_vi")
+        if not model_dir:
+            raise ValueError("b2.model_dir is required for local ASR")
+        return transcribe_local_sherpa(audio_path, model_dir=model_dir, model_type=model_type)
+
+    # Cloud ASR path (OpenAI-compatible)
     api_key = str(b2.get("api_key") or config["env"].get("llm_api_key") or "")
     options = live_asr_request_options(api_key, sample, defaults=b2)
     return await transcribe_openai_whisper(audio_path, **options)
 
 
 def _live_asr_path_label(b2: dict) -> str:
+    if b2.get("asr_type") == "local":
+        model_dir = b2.get("model_dir", "unknown")
+        return f"Sherpa Local ASR ({model_dir})"
     model = b2.get("model_name") or "gpt-4o-transcribe"
     base = b2.get("asr_base_url") or "https://api.openai.com/v1/audio/transcriptions"
     if "groq.com" in str(base):
@@ -102,16 +118,18 @@ def run(config: dict) -> BenchmarkResult:
                 ],
             )
         b2 = config.get("b2") or {}
-        asr_key = b2.get("api_key") or config["env"].get("llm_api_key")
-        if not asr_key:
-            return BenchmarkResult(
-                "B2",
-                "ASR WER Vietnamese",
-                False,
-                _live_metrics_base(mode, fixture_report, b2),
-                [],
-                ["LIVE mode requires LLM_API_KEY or BENCHMARK_ASR_API_KEY"],
-            )
+        asr_type = b2.get("asr_type", "cloud")
+        if asr_type != "local":
+            asr_key = b2.get("api_key") or config["env"].get("llm_api_key")
+            if not asr_key:
+                return BenchmarkResult(
+                    "B2",
+                    "ASR WER Vietnamese",
+                    False,
+                    _live_metrics_base(mode, fixture_report, b2),
+                    [],
+                    ["LIVE mode requires LLM_API_KEY or BENCHMARK_ASR_API_KEY"],
+                )
 
     details = []
     errors: list[str] = []

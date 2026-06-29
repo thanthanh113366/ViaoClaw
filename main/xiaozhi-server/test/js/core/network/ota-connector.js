@@ -21,12 +21,10 @@ export async function webSocketConnect(otaUrl, config) {
         return;
     }
 
-    // Use WebSocket URL from OTA response
-    // When running from localhost (SSH tunnel / dev), rewrite the WS host to 127.0.0.1
-    // so the browser connects through the tunnel instead of the LAN IP.
+    // Use WebSocket URL from OTA response directly
     let connUrl = new URL(websocket.url);
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-        connUrl.hostname = '127.0.0.1';
+    if (window.location.protocol === 'https:' && connUrl.protocol === 'ws:') {
+        connUrl.protocol = 'wss:';
     }
 
     // Add token parameter (from OTA response)

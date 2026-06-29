@@ -2,11 +2,17 @@
 
 version: '3'
 services:
+  torproxy:
+    image: dperson/torproxy
+    container_name: torproxy
+    network_mode: host
+    restart: always
+
   xiaozhi-esp32-server:
     network_mode: host
     image: ghcr.nju.edu.cn/xinnan-tech/xiaozhi-esp32-server:server_latest
     container_name: xiaozhi-esp32-server
-    command: sh -c "pip3 install -q apscheduler==3.10.4 paho-mqtt==2.1.0 'aiogram>=3,<4' 'aiohttp-socks>=0.8.4' && exec python app.py"
+    command: sh -c "pip3 install -q apscheduler==3.10.4 paho-mqtt==2.1.0 'aiogram>=3,<4' 'aiohttp-socks>=0.8.4' vieneu llama-cpp-python && exec python app.py"
     restart: always
     security_opt:
       - seccomp:unconfined

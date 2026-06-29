@@ -49,6 +49,12 @@ class ChatEngine:
             current_sentence_id = str(uuid.uuid4().hex)
             if conn is not None:
                 conn.sentence_id = current_sentence_id
+            if query and query.startswith("[cron"):
+                query = (
+                    "[SYSTEM: You received a scheduled cron job task. "
+                    "You MUST call the tool specified in the instruction. "
+                    "Do NOT reply with text only — invoke the tool now.]\n"
+                ) + query
             ctx.dialogue.put(Message(role="user", content=query))
             ctx.outbound.on_first(current_sentence_id)
         else:
@@ -81,7 +87,7 @@ class ChatEngine:
             and not force_final_answer
         ):
             functions = ctx.func_handler.get_functions()
-            if functions is not None and depth == 0:
+            if functions is not None:
                 functions = list(functions)
                 functions.append(DIRECT_ANSWER_TOOL)
 
@@ -320,7 +326,8 @@ class ChatEngine:
 
                 if tool_results:
                     self._handle_function_result(
-                        ctx, tool_results, depth=depth, streamed_text=streamed_text
+                        ctx, tool_results, depth=depth, streamed_text=streamed_text,
+                        sentence_id=current_sentence_id,
                     )
 
         if len(response_message) > 0:
@@ -345,6 +352,7 @@ class ChatEngine:
         tool_results,
         depth: int,
         streamed_text: str = "",
+        sentence_id: str | None = None,
     ) -> None:
         from core.providers.tts.dto.dto import ContentType
 
@@ -364,11 +372,15 @@ class ChatEngine:
                         f"Skipping duplicate TTS for tool {tool_call_data['name']}, already streamed"
                     )
                 else:
+                    send_to_outbound = sentence_id and text and not (result.action == Action.RESPONSE and streamed_text)
                     if conn is not None and getattr(conn, "tts", None) is not None:
-                        conn.tts.tts_one_sentence(
-                            conn, ContentType.TEXT, content_detail=text
-                        )
                         conn.tts.store_tts_text(conn.sentence_id, text)
+                        if not send_to_outbound:
+                            conn.tts.tts_one_sentence(
+                                conn, ContentType.TEXT, content_detail=text
+                            )
+                    if send_to_outbound:
+                        ctx.outbound.on_chunk(sentence_id, text)
                 ctx.dialogue.put(Message(role="assistant", content=text))
             elif result.action == Action.REQLLM:
                 need_llm_tools.append((result, tool_call_data))

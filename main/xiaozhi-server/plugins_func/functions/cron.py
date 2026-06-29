@@ -3,7 +3,6 @@ from typing import TYPE_CHECKING
 
 from config.logger import setup_logging
 from core.cron.service import get_cron_service
-from core.exec.service import is_exec_enabled
 from plugins_func.register import Action, ActionResponse, ToolType, register_function
 
 if TYPE_CHECKING:
@@ -17,14 +16,12 @@ CRON_FUNCTION_DESC = {
     "function": {
         "name": "cron",
         "description": (
-            "Schedule reminders, tasks, or system commands. IMPORTANT: When user asks "
+            "Schedule reminders, tasks, or device control. IMPORTANT: When user asks "
             "to be reminded or scheduled, you MUST call this tool. Use 'at_seconds' for "
             "one-time reminders (e.g., 'remind me in 10 minutes' → at_seconds=600). Use "
             "'every_seconds' ONLY for recurring tasks. Use 'cron_expr' for complex schedules. "
-            "Use 'command' ONLY for real shell commands (e.g. 'df -h', 'curl ...'). "
-            "Never put AI tool names (hass_set_state, hass_get_state, cron, etc.) in 'command'. "
-            "For Home Assistant / device control at fire time: set deliver=false, leave command "
-            "empty, and write message as a future self-instruction (see 'message' parameter). "
+            "For device control at fire time: set deliver=false and write message as a future "
+            "self-instruction (see 'message' parameter). "
             "Reminders play on the speaker only when the device is online or when the user "
             "turns it on again; if the device was off for a long time, delivery may be delayed."
         ),
@@ -44,21 +41,10 @@ CRON_FUNCTION_DESC = {
                         "verbatim via TTS to the user — as if talking to a close friend.\n"
                         "- deliver=false: an instruction written for your FUTURE self when "
                         "the job fires (injected as [cron job_id] + this message). Be explicit "
-                        "about what to do: which tools to call, entity_id, action, then what "
-                        "to say to the user. Example: 'Gọi hass_set_state bật switch.phong_ngu_led "
-                        "(turn_on). Sau đó nói ngắn: Đèn phòng ngủ đã bật.'"
+                        "about which tool to call, with what parameters, then what to say. "
+                        "Example: 'Gọi shelly_cloud với action=turn_off. Sau đó nói ngắn: "
+                        "Đèn đã tắt.'"
                     ),
-                },
-                "command": {
-                    "type": "string",
-                    "description": (
-                        "Optional real shell/bash command only (e.g. 'df -h'). "
-                        "Forces deliver=false. Do NOT use AI tool names here."
-                    ),
-                },
-                "command_confirm": {
-                    "type": "boolean",
-                    "description": "Required when allow_command is false.",
                 },
                 "at_seconds": {
                     "type": "integer",
@@ -81,8 +67,7 @@ CRON_FUNCTION_DESC = {
                     "description": (
                         "How message is used at fire time. "
                         "- true : speak message on the speaker via TTS — use a friendly user-facing reminder. "
-                        "- false (default): send message to yourself as a chat task — use an explicit self-instruction to call tools / perform actions. "
-                        "Forced false when command is set."
+                        "- false (default): send message to yourself as a chat task — use an explicit self-instruction to call tools / perform actions."
                     ),
                 },
                 "target_channel": {
@@ -112,8 +97,6 @@ def cron(
     conn: "ConnectionHandler",
     action: str,
     message: str | None = None,
-    command: str | None = None,
-    command_confirm: bool | None = None,
     at_seconds: int | None = None,
     every_seconds: int | None = None,
     cron_expr: str | None = None,
@@ -133,8 +116,6 @@ def cron(
             conn,
             svc,
             message=message,
-            command=command,
-            command_confirm=bool(command_confirm),
             at_seconds=at_seconds,
             every_seconds=every_seconds,
             cron_expr=cron_expr,
@@ -158,8 +139,6 @@ def _add_job(
     svc,
     *,
     message,
-    command,
-    command_confirm,
     at_seconds,
     every_seconds,
     cron_expr,
@@ -192,19 +171,6 @@ def _add_job(
         )
 
     deliver_value = bool(deliver) if deliver is not None else False
-    command = (command or "").strip()
-    if command:
-        if not is_exec_enabled(conn.config):
-            return ActionResponse(
-                Action.ERROR, "command execution is disabled", None
-            )
-        if not svc.allow_command and not command_confirm:
-            return ActionResponse(
-                Action.ERROR,
-                "command_confirm=true is required when allow_command is disabled",
-                None,
-            )
-        deliver_value = False
 
     name = message[:30]
     job = svc.add_job(
@@ -214,7 +180,6 @@ def _add_job(
         deliver=deliver_value,
         channel=channel,
         target_id=resolved_target_id,
-        command=command,
     )
     schedule_info = _format_schedule_info(schedule)
     return ActionResponse(

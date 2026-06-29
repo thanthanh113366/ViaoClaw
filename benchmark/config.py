@@ -167,11 +167,14 @@ def build_config(mode: str) -> dict[str, Any]:
             "authorization": os.environ.get("VIAOCLAW_WS_TOKEN"),
         },
         "b2": {
+            "asr_type": os.environ.get("BENCHMARK_ASR_TYPE", "cloud"),
             "asr_base_url": os.environ.get(
                 "BENCHMARK_ASR_BASE_URL",
                 "https://api.openai.com/v1/audio/transcriptions",
             ),
             "model_name": os.environ.get("BENCHMARK_ASR_MODEL", "gpt-4o-transcribe"),
+            "model_dir": os.environ.get("BENCHMARK_ASR_MODEL_DIR", ""),
+            "model_type": os.environ.get("BENCHMARK_ASR_MODEL_TYPE", "zipformer_vi"),
             "language": os.environ.get("BENCHMARK_ASR_LANGUAGE", "vi"),
             "api_key": os.environ.get("BENCHMARK_ASR_API_KEY") or os.environ.get("LLM_API_KEY"),
             # Empty string disables prompt; unset uses provider default in asr_live.py

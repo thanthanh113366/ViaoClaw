@@ -47,12 +47,9 @@ def init_cron_service(config: dict, registry) -> Optional["CronService"]:
 
 
 def _build_cron_service(config: dict, registry) -> "CronService":
-    from core.exec.service import get_exec_runner
-
     job_store = JobStore(config)
-    exec_runner = get_exec_runner(config)
     fire_handler = CronFireHandler(
-        registry, registry.pending_store, exec_runner, config
+        registry, registry.pending_store, config
     )
     return CronService(config, job_store, fire_handler)
 
@@ -96,7 +93,6 @@ class CronService:
         self.job_store = job_store
         self.fire_handler = fire_handler
         self.tz = ZoneInfo(self.cron_cfg.get("timezone", "Asia/Ho_Chi_Minh"))
-        self.allow_command = bool(self.cron_cfg.get("allow_command", True))
         self._lock = threading.Lock()
         self._scheduler = BackgroundScheduler(timezone=self.tz)
         self._running = False
@@ -134,7 +130,6 @@ class CronService:
         deliver: bool,
         channel: str,
         target_id: str,
-        command: str = "",
     ) -> dict:
         now_ms = _now_ms()
         delete_after_run = schedule.get("kind") == "at"
@@ -146,7 +141,6 @@ class CronService:
             "payload": {
                 "kind": "agent_turn",
                 "message": message,
-                "command": command or "",
                 "deliver": deliver,
                 "channel": channel,
                 "to": target_id,

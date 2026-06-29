@@ -7,8 +7,6 @@ from core.cron.mqtt_wake import (
     is_mqtt_wake_enabled,
 )
 from core.cron.registry import ConnectionRegistry
-from core.exec.runner import ExecRunner
-from core.exec.service import is_exec_enabled
 from core.cron.store import PendingStore
 
 if TYPE_CHECKING:
@@ -25,12 +23,10 @@ class CronFireHandler:
         self,
         registry: ConnectionRegistry,
         pending_store: PendingStore,
-        exec_runner: ExecRunner,
         config: dict | None = None,
     ):
         self.registry = registry
         self.pending_store = pending_store
-        self.exec_runner = exec_runner
         self.config = config or {}
         self.telegram_gateway: Optional["TelegramGateway"] = None
         self.agent_runtime: Optional["AgentRuntime"] = None
@@ -44,12 +40,11 @@ class CronFireHandler:
         channel = payload.get("channel") or "xiaozhi"
         target_id = payload.get("to") or ""
         message = payload.get("message") or ""
-        command = payload.get("command") or ""
         deliver = bool(payload.get("deliver"))
 
         logger.bind(tag=TAG).info(
             f"[cron] fire job id={job_id} channel={channel} deliver={deliver} "
-            f"command={bool(command)} target={target_id}"
+            f"target={target_id}"
         )
 
         if channel == "telegram":
@@ -57,27 +52,12 @@ class CronFireHandler:
                 job_id=job_id,
                 target_id=target_id,
                 message=message,
-                command=command,
                 deliver=deliver,
             )
             return
 
         if channel != "xiaozhi":
             raise RuntimeError(f"unsupported channel: {channel}")
-
-        if command:
-            if not is_exec_enabled(self.config):
-                output = "Error executing scheduled command: command execution is disabled"
-            else:
-                try:
-                    raw = self.exec_runner.run(command)
-                    output = (
-                        f"Scheduled command '{command}' executed:\n{raw}"
-                    )
-                except Exception as exc:
-                    output = f"Error executing scheduled command: {exc}"
-            self._deliver_tts(target_id, output, job_id=job_id)
-            return
 
         if deliver:
             self._deliver_tts(target_id, message, job_id=job_id)
@@ -106,23 +86,10 @@ class CronFireHandler:
         job_id: str,
         target_id: str,
         message: str,
-        command: str,
         deliver: bool,
     ) -> None:
         gateway = self.telegram_gateway
         runtime = self.agent_runtime
-
-        if command:
-            if not is_exec_enabled(self.config):
-                output = "Error executing scheduled command: command execution is disabled"
-            else:
-                try:
-                    raw = self.exec_runner.run(command)
-                    output = f"Scheduled command '{command}' executed:\n{raw}"
-                except Exception as exc:
-                    output = f"Error executing scheduled command: {exc}"
-            self._deliver_telegram(target_id, output, job_id=job_id)
-            return
 
         if deliver:
             self._deliver_telegram(target_id, message, job_id=job_id)

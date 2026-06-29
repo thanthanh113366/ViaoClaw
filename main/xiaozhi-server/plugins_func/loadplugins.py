@@ -21,5 +21,7 @@ def auto_import_modules(package_name):
     for _, module_name, _ in pkgutil.iter_modules(package_path):
         # 导入模块
         full_module_name = f"{package_name}.{module_name}"
-        importlib.import_module(full_module_name)
-        #logger.bind(tag=TAG).info(f"模块 '{full_module_name}' 已加载")
+        try:
+            importlib.import_module(full_module_name)
+        except Exception as e:
+            logger.bind(tag=TAG).warning(f"模块 '{full_module_name}' 加载失败: {e}")

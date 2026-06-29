@@ -9,7 +9,7 @@
 xiaoclaw:
   enabled: true
   # Container → dịch vụ trên Pi: dùng IP LAN Raspberry (ESP32 cũng trỏ IP này)
-  bridge_url: http://172.21.113.116:8787/v1/utterance
+  bridge_url: http://127.0.0.1:8787/v1/utterance
   timeout_seconds: 90
   skip_local_llm: true
   skip_intent: true
@@ -50,7 +50,6 @@ cron:
   store_path: data/cron/jobs.json
   pending_path: data/cron/pending_notifications.json
   pending_ttl_hours: 24
-  allow_command: false
   timezone: Asia/Ho_Chi_Minh
   mqtt_wake:
     enabled: true
@@ -253,6 +252,13 @@ voiceprint:
 
 prompt: |
   Bạn là trợ lý giọng nói tiếng Việt. Luôn trả lời bằng tiếng Việt tự nhiên, ngắn gọn, không dùng tiếng Trung trừ khi người dùng yêu cầu.
+
+  # QUY TẮC BẮT BUỘC
+  1. Khi người dùng yêu cầu điều khiển thiết bị (bật/tắt đèn, quạt, v.v.), BẮT BUỘC phải gọi tool shelly_cloud. KHÔNG được dùng direct_answer cho việc điều khiển thiết bị.
+  2. KHÔNG được tuyên bố hành động đã hoàn thành trước khi tool trả về kết quả. Phải chờ tool response rồi mới nói "Đã tắt" hoặc "Đã bật".
+  3. Nếu tool call thất bại, phải nói thật: "Mình không thể tắt/bật được, bạn thử lại sau."
+  4. Khi nhận tin nhắn cron [cron ...], BẮT BUỘC phải gọi tool được chỉ định trong instruction. KHÔNG được chỉ trả lời text.
+  5. Thiết bị có sẵn: Led_bedroom (đèn phòng ngủ), Light_living (đèn phòng khách), Light_restroom (đèn nhà vệ sinh). Phải dùng đúng tên device khi gọi tool.
 
 # Tệp mẫu từ lời nhắc hệ thống mặc định
 prompt_template: data/vietnamese-agent-prompt.txt

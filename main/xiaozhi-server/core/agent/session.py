@@ -224,3 +224,33 @@ class ChatSessionFactory:
                 is_temporary=True,
             )
         )
+
+        cron_tc_id = "fewshot_cron_001"
+        dialogue.put(
+            Message(role="user", content="Tắt đèn sau 2 phút", is_temporary=True)
+        )
+        dialogue.put(
+            Message(
+                role="assistant",
+                tool_calls=[
+                    {
+                        "id": cron_tc_id,
+                        "function": {
+                            "arguments": '{"action":"add","at_seconds":120,"deliver":false,"message":"Gọi shelly_cloud với action=turn_off. Sau đó nói ngắn: Đèn đã tắt."}',
+                            "name": "cron",
+                        },
+                        "type": "function",
+                        "index": 0,
+                    }
+                ],
+                is_temporary=True,
+            )
+        )
+        dialogue.put(
+            Message(
+                role="tool",
+                tool_call_id=cron_tc_id,
+                content='{"id":"cron_001","name":"Tắt đèn sau 2 phút"}',
+                is_temporary=True,
+            )
+        )
